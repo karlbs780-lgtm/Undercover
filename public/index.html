@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Devine tête — Le jeu de l'imposteur</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+
+    <!-- ÉCRAN : Accueil -->
+    <section id="screen-home" class="screen active">
+      <h1 class="logo">Devine&nbsp;tête</h1>
+      <p class="tagline">Le jeu de l'imposteur</p>
+
+      <label class="field">
+        <span>Ton pseudo</span>
+        <input id="name-input" type="text" maxlength="20" placeholder="Ex : Alex" autocomplete="off" />
+      </label>
+
+      <button id="create-btn" class="btn btn-primary">Créer une partie</button>
+
+      <div class="divider"><span>ou</span></div>
+
+      <div class="join-row">
+        <input id="code-input" type="text" maxlength="4" placeholder="CODE" autocomplete="off" />
+        <button id="join-btn" class="btn">Rejoindre</button>
+      </div>
+
+      <p id="home-error" class="error"></p>
+    </section>
+
+    <!-- ÉCRAN : Salle d'attente / Lobby -->
+    <section id="screen-lobby" class="screen">
+      <div class="code-banner">
+        <span class="code-label">Code de la partie</span>
+        <span id="room-code" class="code-value">----</span>
+      </div>
+
+      <h2>Joueurs <span id="player-count" class="badge">0</span></h2>
+      <ul id="player-list" class="player-list"></ul>
+
+      <div id="host-settings" class="settings hidden">
+        <h3>Réglages</h3>
+        <div class="setting-row">
+          <label>Imposteurs</label>
+          <div class="stepper">
+            <button type="button" class="step-btn" data-target="set-imposteurs" data-delta="-1" aria-label="Moins">−</button>
+            <input id="set-imposteurs" type="number" min="0" step="1" readonly />
+            <button type="button" class="step-btn" data-target="set-imposteurs" data-delta="1" aria-label="Plus">+</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label>Mister White</label>
+          <div class="stepper">
+            <button type="button" class="step-btn" data-target="set-white" data-delta="-1" aria-label="Moins">−</button>
+            <input id="set-white" type="number" min="0" step="1" readonly />
+            <button type="button" class="step-btn" data-target="set-white" data-delta="1" aria-label="Plus">+</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label for="set-difficulte">Difficulté</label>
+          <select id="set-difficulte">
+            <option value="">Toutes</option>
+            <option value="facile">Facile</option>
+            <option value="moyen">Moyen</option>
+            <option value="difficile">Difficile</option>
+          </select>
+        </div>
+
+        <div class="theme-section">
+          <div class="theme-head">
+            <span>Thèmes</span>
+            <span id="avail-pairs" class="avail-pairs">0 paires</span>
+          </div>
+          <div id="theme-chips" class="theme-chips"></div>
+        </div>
+
+        <p class="composition">
+          <span id="civils-count">0</span> civils ·
+          <span id="imposteurs-count">0</span> imposteurs ·
+          <span id="white-count">0</span> Mister White
+        </p>
+        <p id="setup-error" class="error"></p>
+        <button id="start-btn" class="btn btn-primary">Lancer la partie</button>
+      </div>
+
+      <p id="waiting-msg" class="waiting hidden">En attente de l'hôte pour lancer la partie…</p>
+    </section>
+
+    <!-- ÉCRAN : Révélation de la carte -->
+    <section id="screen-reveal" class="screen">
+      <p class="reveal-title">Ta carte secrète</p>
+      <div id="reveal-flip" class="flip-card">
+        <div class="flip-card-inner" id="reveal-inner">
+          <div class="flip-face flip-back">
+            <span class="flip-q">?</span>
+            <span class="flip-tap">Touche pour révéler</span>
+          </div>
+          <div class="flip-face flip-front role-card" id="role-card">
+            <span class="role-name" id="role-name">—</span>
+            <span class="role-word" id="role-word">—</span>
+            <span class="role-hint" id="role-hint"></span>
+          </div>
+        </div>
+      </div>
+      <p class="first-speaker" id="first-speaker"></p>
+      <button id="begin-clues-btn" class="btn btn-primary hidden">Commencer les indices</button>
+      <p id="reveal-wait" class="waiting hidden">En attente de l'hôte…</p>
+    </section>
+
+    <!-- ÉCRAN : Jeu (indices / vote / Mister White) -->
+    <section id="screen-game" class="screen">
+      <div class="game-header">
+        <span id="my-role-chip" class="role-chip">—</span>
+        <span id="round-chip" class="badge">Manche 1</span>
+      </div>
+
+      <div id="banner" class="banner hidden"></div>
+
+      <!-- Journal des indices -->
+      <div class="clue-log-wrap">
+        <h3>Indices</h3>
+        <ul id="clue-log" class="clue-log"></ul>
+      </div>
+
+      <!-- Zone d'action (change selon la phase) -->
+      <div id="phase-indices" class="phase-box hidden">
+        <p id="turn-info" class="turn-info"></p>
+        <div id="clue-input-row" class="join-row hidden">
+          <input id="clue-input" type="text" maxlength="60" placeholder="Ton indice…" autocomplete="off" />
+          <button id="clue-send" class="btn">Envoyer</button>
+        </div>
+      </div>
+
+      <div id="phase-vote" class="phase-box hidden">
+        <h3>Votez pour un suspect</h3>
+        <p id="vote-progress" class="turn-info"></p>
+        <ul id="vote-list" class="vote-list"></ul>
+      </div>
+
+      <div id="phase-white" class="phase-box hidden">
+        <div id="white-guess-me" class="hidden">
+          <h3>Tu es Mister White&nbsp;!</h3>
+          <p class="turn-info">Dernière chance : devine le mot des civils pour voler la victoire.</p>
+          <div class="join-row">
+            <input id="white-input" type="text" maxlength="30" placeholder="Le mot des civils…" autocomplete="off" />
+            <button id="white-send" class="btn">Deviner</button>
+          </div>
+        </div>
+        <p id="white-guess-wait" class="turn-info hidden">Mister White a été démasqué et tente de deviner le mot…</p>
+      </div>
+
+      <p id="game-error" class="error"></p>
+    </section>
+
+    <!-- ÉCRAN : Fin de partie -->
+    <section id="screen-end" class="screen">
+      <div id="end-trophy" class="end-trophy">🏆</div>
+      <div id="end-banner" class="end-banner">—</div>
+      <p id="end-reason" class="end-reason"></p>
+      <h3>Le mot était</h3>
+      <p id="end-word" class="end-word">—</p>
+      <ul id="end-roles" class="end-roles"></ul>
+      <button id="again-btn" class="btn btn-primary hidden">Rejouer</button>
+      <p id="end-wait" class="waiting hidden">En attente de l'hôte pour relancer…</p>
+    </section>
+
+    <!-- OVERLAY : annonce d'élimination (plein écran, 3D) -->
+    <div id="elim-overlay" class="overlay hidden">
+      <div class="elim-card flip-card">
+        <div class="flip-card-inner" id="elim-inner">
+          <div class="flip-face flip-back elim-back"><span class="flip-q">?</span></div>
+          <div class="flip-face flip-front elim-front" id="elim-front">
+            <span id="elim-name" class="elim-name">—</span>
+            <span id="elim-verdict" class="elim-verdict">—</span>
+          </div>
+        </div>
+      </div>
+      <button id="elim-continue" class="btn">Continuer</button>
+    </div>
+
+  </main>
+
+  <canvas id="confetti" class="confetti"></canvas>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

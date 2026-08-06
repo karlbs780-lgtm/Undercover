@@ -1,0 +1,12 @@
+# Blueprint Render — déploiement en 1 clic (https://render.com)
+# Sur Render : New > Blueprint, connecte ce dépôt, Render lit ce fichier.
+services:
+  - type: web
+    name: devine-tete
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
