@@ -60,25 +60,30 @@ export function countAvailablePairs(filters = {}) {
 // Distribue les roles a partir d'une liste d'identifiants de joueurs et d'une
 // paire de mots. Retourne :
 //   roles        : { [playerId]: { role, word } }
-//   firstSpeaker : id du joueur qui commence (toujours un CIVIL, pour ne pas
-//                  desavantager le Mister White ni exposer un imposteur d'entree)
+//   firstSpeaker : id du joueur qui commence (un porteur du mot civil, jamais
+//                  un imposteur/Mister White qui serait avantage/desavantage)
+//
+// Mots : imposteur -> mot imposteur ; Mister White -> aucun ; tous les autres
+// (civil, fou, gardien, devin) -> le mot civil (ils se fondent dans la masse).
 export function assignRoles(playerIds, setup, pair) {
   const ids = shuffle(playerIds);
   const roles = {};
   let i = 0;
+  const take = (n, role, word) => {
+    for (let k = 0; k < (n || 0); k++) roles[ids[i++]] = { role, word };
+  };
 
-  for (let k = 0; k < setup.imposteurs; k++) {
-    roles[ids[i++]] = { role: "imposteur", word: pair.imposteur };
-  }
-  for (let k = 0; k < setup.misterWhite; k++) {
-    roles[ids[i++]] = { role: "mister_white", word: null };
-  }
-  for (; i < ids.length; i++) {
-    roles[ids[i]] = { role: "civil", word: pair.civil };
-  }
+  take(setup.imposteurs, "imposteur", pair.imposteur);
+  take(setup.misterWhite, "mister_white", null);
+  take(setup.fou, "fou", pair.civil);
+  take(setup.gardien, "gardien", pair.civil);
+  take(setup.devin, "devin", pair.civil);
+  for (; i < ids.length; i++) roles[ids[i]] = { role: "civil", word: pair.civil };
 
-  const civilIds = ids.filter((id) => roles[id].role === "civil");
-  const firstSpeaker = civilIds[Math.floor(Math.random() * civilIds.length)];
+  const CIVIL_LIKE = ["civil", "gardien", "devin", "fou"];
+  const pool = ids.filter((id) => CIVIL_LIKE.includes(roles[id].role));
+  const from = pool.length ? pool : ids;
+  const firstSpeaker = from[Math.floor(Math.random() * from.length)];
 
   return { roles, firstSpeaker };
 }

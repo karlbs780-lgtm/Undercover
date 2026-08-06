@@ -69,6 +69,15 @@
           </select>
         </div>
 
+        <div class="special-section">
+          <div class="theme-head"><span>Rôles spéciaux</span></div>
+          <div id="special-chips" class="theme-chips">
+            <button type="button" class="chip" data-role="fou">🃏 Le Fou</button>
+            <button type="button" class="chip" data-role="gardien">🛡️ Le Gardien</button>
+            <button type="button" class="chip" data-role="devin">🔎 Le Devin</button>
+          </div>
+        </div>
+
         <div class="theme-section">
           <div class="theme-head">
             <span>Thèmes</span>
@@ -77,11 +86,7 @@
           <div id="theme-chips" class="theme-chips"></div>
         </div>
 
-        <p class="composition">
-          <span id="civils-count">0</span> civils ·
-          <span id="imposteurs-count">0</span> imposteurs ·
-          <span id="white-count">0</span> Mister White
-        </p>
+        <p id="composition" class="composition"></p>
         <p id="setup-error" class="error"></p>
         <button id="start-btn" class="btn btn-primary">Lancer la partie</button>
       </div>
@@ -150,6 +155,21 @@
           </div>
         </div>
         <p id="white-guess-wait" class="turn-info hidden">Mister White a été démasqué et tente de deviner le mot…</p>
+      </div>
+
+      <!-- Pouvoir du Gardien : protection (pendant le vote) -->
+      <div id="gardien-panel" class="power-panel gardien hidden">
+        <h3>🛡️ Protège un joueur</h3>
+        <p class="turn-info">S'il est le plus visé, il sera sauvé.</p>
+        <ul id="gardien-list" class="vote-list"></ul>
+      </div>
+
+      <!-- Pouvoir du Devin : enquête (1 fois) -->
+      <div id="devin-panel" class="power-panel devin hidden">
+        <h3>🔎 Ton enquête</h3>
+        <p id="devin-result" class="devin-result hidden"></p>
+        <p id="devin-hint" class="turn-info">Choisis un joueur à sonder (une seule fois).</p>
+        <ul id="devin-list" class="vote-list"></ul>
       </div>
 
       <p id="game-error" class="error"></p>

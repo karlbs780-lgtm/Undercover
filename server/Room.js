@@ -1,22 +1,27 @@
 // Represente une salle de jeu : joueurs, reglages, phase et etat courant.
 // IMPORTANT : publicState() ne revele les roles que des joueurs ELIMINES
-// (ou de tous a la fin). Le role/mot d'un joueur en vie n'est envoye qu'a lui,
-// en prive, via "your_role".
+// (ou de tous a la fin). Les secrets (role/mot en vie, protection du Gardien,
+// enquete du Devin) ne sont jamais diffuses publiquement.
 //
 // Machine a etats :
 //   LOBBY -> REVEAL -> INDICES <-> VOTE -> (WHITE_GUESS) -> ... -> ENDED
-//                         ^__________________________________|
-//                              (tant qu'aucun camp n'a gagne)
+//
+// Camps : bad = imposteur+mister_white ; good = civil+gardien+devin ;
+//         fou = neutre (gagne s'il est elimine au vote).
 
 import { defaultSetup, drawPair, assignRoles, countAvailablePairs } from "./gameLogic.js";
 import { validateSetup } from "./validation.js";
 import { pairKey, THEMES } from "./words.js";
 
+const BAD_ROLES = ["imposteur", "mister_white"];
+const GOOD_ROLES = ["civil", "gardien", "devin"];
+const CIVIL_LIKE = ["civil", "gardien", "devin", "fou"];
+
 function normalizeWord(s) {
   return (s ?? "")
     .toString()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // enleve les accents
+    .replace(/[̀-ͯ]/g, "")
     .trim()
     .toLowerCase();
 }
@@ -28,27 +33,28 @@ export class Room {
     this.players = new Map(); // id -> { id, name, connected, alive }
     this.phase = "LOBBY";
     this.customized = false;
-    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [] };
+    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0 };
 
-    this.playedPairs = new Set(); // anti-repetition entre manches
+    this.playedPairs = new Set();
     this.resetRound();
   }
 
-  // Remet a zero l'etat d'une manche (garde joueurs, reglages, playedPairs).
   resetRound() {
     this.roles = {}; // id -> { role, word }  (SECRET)
     this.currentPair = null;
     this.firstSpeaker = null;
-    this.order = []; // ordre stable des joueurs (ordre d'arrivee)
+    this.order = [];
     this.round = 0;
-    this.currentClueOrder = []; // ids vivants, dans l'ordre de parole du tour
+    this.currentClueOrder = [];
     this.cluePointer = 0;
-    this.clues = []; // journal public { round, playerId, name, text }
-    this.votes = new Map(); // voterId -> targetId (tour de vote courant)
+    this.clues = [];
+    this.votes = new Map();
     this.tieRevote = false;
     this.lastStartId = null;
-    this.revealed = new Set(); // ids dont le role est public (elimines)
-    this.pendingWhiteId = null; // Mister White en train de deviner
+    this.revealed = new Set();
+    this.pendingWhiteId = null;
+    this.protectedId = null; // cible protegee par le Gardien (SECRET, ce tour)
+    this.devinUsedBy = new Set(); // devins ayant deja enquete
     this.winner = null;
     this.endReason = null;
   }
@@ -76,13 +82,14 @@ export class Room {
     this.settings.misterWhite = d.misterWhite;
   }
 
-  updateSettings({ imposteurs, misterWhite, difficulte, themes }) {
+  updateSettings({ imposteurs, misterWhite, difficulte, themes, fou, gardien, devin }) {
     if (typeof imposteurs === "number") this.settings.imposteurs = Math.max(0, Math.floor(imposteurs));
     if (typeof misterWhite === "number") this.settings.misterWhite = Math.max(0, Math.floor(misterWhite));
+    if (typeof fou === "number") this.settings.fou = Math.min(1, Math.max(0, Math.floor(fou)));
+    if (typeof gardien === "number") this.settings.gardien = Math.min(1, Math.max(0, Math.floor(gardien)));
+    if (typeof devin === "number") this.settings.devin = Math.min(1, Math.max(0, Math.floor(devin)));
     if (difficulte !== undefined) this.settings.difficulte = difficulte || null;
-    if (Array.isArray(themes)) {
-      this.settings.themes = themes.filter((t) => THEMES.includes(t)); // ne garde que des themes connus
-    }
+    if (Array.isArray(themes)) this.settings.themes = themes.filter((t) => THEMES.includes(t));
     this.customized = true;
   }
 
@@ -90,16 +97,19 @@ export class Room {
 
   startGame() {
     const players = this.players.size;
-    const setup = { imposteurs: this.settings.imposteurs, misterWhite: this.settings.misterWhite };
+    const s = this.settings;
+    const setup = {
+      imposteurs: s.imposteurs,
+      misterWhite: s.misterWhite,
+      fou: s.fou,
+      gardien: s.gardien,
+      devin: s.devin,
+    };
 
     const check = validateSetup({ players, ...setup });
     if (!check.valid) return { ok: false, error: check.errors[0] };
 
-    const pair = drawPair({
-      difficulte: this.settings.difficulte,
-      themes: this.settings.themes,
-      exclude: this.playedPairs,
-    });
+    const pair = drawPair({ difficulte: s.difficulte, themes: s.themes, exclude: this.playedPairs });
     if (!pair) return { ok: false, error: "Aucune paire de mots disponible pour ces réglages." };
 
     this.resetRound();
@@ -155,6 +165,13 @@ export class Room {
     this.phase = "INDICES";
   }
 
+  enterVote() {
+    this.phase = "VOTE";
+    this.votes = new Map();
+    this.tieRevote = false;
+    this.protectedId = null; // la protection se rejoue chaque tour de vote
+  }
+
   submitClue(playerId, text) {
     if (this.phase !== "INDICES") return { ok: false, error: "Ce n'est pas la phase d'indices." };
     const expected = this.currentClueOrder[this.cluePointer];
@@ -167,12 +184,37 @@ export class Room {
     this.cluePointer++;
 
     if (this.cluePointer >= this.currentClueOrder.length) {
-      this.phase = "VOTE";
-      this.votes = new Map();
-      this.tieRevote = false;
+      this.enterVote();
       return { ok: true, phaseChanged: "VOTE" };
     }
     return { ok: true };
+  }
+
+  // --- Pouvoir du Gardien : protection ----------------------------------
+
+  setProtection(gardienId, targetId) {
+    if (this.phase !== "VOTE") return { ok: false, error: "La protection se choisit pendant le vote." };
+    if (this.roles[gardienId]?.role !== "gardien") return { ok: false, error: "Tu n'es pas le Gardien." };
+    if (!this.players.get(gardienId)?.alive) return { ok: false, error: "Tu es éliminé." };
+    if (!this.players.get(targetId)?.alive) return { ok: false, error: "Cible invalide." };
+    if (targetId === gardienId) return { ok: false, error: "Tu ne peux pas te protéger toi-même." };
+    this.protectedId = targetId;
+    return { ok: true };
+  }
+
+  // --- Pouvoir du Devin : enquete (1 fois) ------------------------------
+
+  devinCheck(devinId, targetId) {
+    if (this.phase !== "INDICES" && this.phase !== "VOTE") return { ok: false, error: "Pas maintenant." };
+    if (this.roles[devinId]?.role !== "devin") return { ok: false, error: "Tu n'es pas le Devin." };
+    if (!this.players.get(devinId)?.alive) return { ok: false, error: "Tu es éliminé." };
+    if (this.devinUsedBy.has(devinId)) return { ok: false, error: "Tu as déjà utilisé ton pouvoir." };
+    if (!this.players.get(targetId)?.alive) return { ok: false, error: "Cible invalide." };
+    if (targetId === devinId) return { ok: false, error: "Choisis un autre joueur." };
+
+    this.devinUsedBy.add(devinId);
+    const isTraitor = BAD_ROLES.includes(this.roles[targetId]?.role);
+    return { ok: true, private: true, targetName: this.players.get(targetId).name, isTraitor };
   }
 
   // --- Phase VOTE --------------------------------------------------------
@@ -212,18 +254,29 @@ export class Room {
       }
     }
 
+    let eliminatedId;
+    let wasTie = false;
     if (leaders.length > 1) {
       if (!this.tieRevote) {
-        // Premiere egalite : on revote.
         this.tieRevote = true;
         this.votes = new Map();
         return { ok: true, type: "tie", tied: leaders.map((id) => this.players.get(id)?.name), revote: true };
       }
-      // Deuxieme egalite consecutive : on tranche au hasard pour avancer.
-      const pick = leaders[Math.floor(Math.random() * leaders.length)];
-      return this.eliminate(pick, tally, true);
+      eliminatedId = leaders[Math.floor(Math.random() * leaders.length)];
+      wasTie = true;
+    } else {
+      eliminatedId = leaders[0];
     }
-    return this.eliminate(leaders[0], tally, false);
+
+    // Protection du Gardien : la cible la plus visee est sauvee.
+    if (this.protectedId && eliminatedId === this.protectedId) {
+      const savedName = this.players.get(eliminatedId)?.name;
+      this.protectedId = null;
+      this.beginClueRound();
+      return { ok: true, type: "protected", name: savedName, nextPhase: "INDICES" };
+    }
+
+    return this.eliminate(eliminatedId, tally, wasTie);
   }
 
   eliminate(id, tally, wasTie) {
@@ -242,11 +295,19 @@ export class Room {
       tally: this.namedTally(tally),
     };
 
+    // Le Fou gagne s'il se fait eliminer au vote.
+    if (role === "fou") {
+      this.endGame("fou", `${p.name}, le Fou, s'est fait éliminer : il gagne !`);
+      return { ...result, ended: true, winner: this.winner, reason: this.endReason };
+    }
+
+    // Mister White demasque : il tente de deviner le mot.
     if (role === "mister_white") {
       this.phase = "WHITE_GUESS";
       this.pendingWhiteId = id;
       return { ...result, needsWhiteGuess: true };
     }
+
     return { ...result, ...this.advanceAfterElimination() };
   }
 
@@ -271,13 +332,13 @@ export class Room {
 
   checkWin() {
     const alive = this.aliveIds();
-    const traitres = alive.filter((id) => this.roles[id]?.role !== "civil").length;
-    const civils = alive.filter((id) => this.roles[id]?.role === "civil").length;
+    const bad = alive.filter((id) => BAD_ROLES.includes(this.roles[id]?.role)).length;
+    const good = alive.filter((id) => GOOD_ROLES.includes(this.roles[id]?.role)).length;
 
-    if (traitres === 0) {
+    if (bad === 0) {
       return { ended: true, winner: "civils", reason: "Tous les imposteurs ont été démasqués." };
     }
-    if (traitres >= civils) {
+    if (bad >= good) {
       return { ended: true, winner: "traitres", reason: "Les imposteurs ont atteint la parité : ils l'emportent." };
     }
     return { ended: false };
@@ -313,6 +374,7 @@ export class Room {
     if (!p) return {};
     p.connected = false;
     p.alive = false;
+    if (this.protectedId === id) this.protectedId = null;
 
     const idx = this.currentClueOrder.indexOf(id);
     if (idx !== -1) {
@@ -321,7 +383,6 @@ export class Room {
     }
     this.votes.delete(id);
 
-    // Un depart peut faire basculer la victoire (ex: le seul imposteur part).
     if (this.phase === "INDICES" || this.phase === "VOTE") {
       const w = this.checkWin();
       if (w.ended) {
@@ -330,9 +391,7 @@ export class Room {
       }
     }
     if (this.phase === "INDICES" && this.cluePointer >= this.currentClueOrder.length && this.currentClueOrder.length > 0) {
-      this.phase = "VOTE";
-      this.votes = new Map();
-      this.tieRevote = false;
+      this.enterVote();
       return { phaseChanged: "VOTE" };
     }
     if (this.phase === "VOTE" && this.votes.size >= this.aliveIds().length && this.aliveIds().length > 0) {
@@ -346,7 +405,14 @@ export class Room {
   publicState() {
     const n = this.players.size;
     const s = this.settings;
-    const validation = validateSetup({ players: n, imposteurs: s.imposteurs, misterWhite: s.misterWhite });
+    const validation = validateSetup({
+      players: n,
+      imposteurs: s.imposteurs,
+      misterWhite: s.misterWhite,
+      fou: s.fou,
+      gardien: s.gardien,
+      devin: s.devin,
+    });
     const availablePairs = countAvailablePairs({ difficulte: s.difficulte, themes: s.themes });
     const turnId = this.phase === "INDICES" ? this.currentClueOrder[this.cluePointer] ?? null : null;
 
@@ -364,10 +430,19 @@ export class Room {
       })),
       settings: { ...s },
       allThemes: THEMES,
-      counts: { players: n, civils: validation.civils, traitres: validation.traitres, availablePairs },
+      counts: {
+        players: n,
+        civils: validation.civils,
+        bad: validation.bad,
+        imposteurs: s.imposteurs,
+        misterWhite: s.misterWhite,
+        fou: s.fou,
+        gardien: s.gardien,
+        devin: s.devin,
+        availablePairs,
+      },
       validation: { valid: validation.valid, errors: validation.errors },
       firstSpeakerName: this.firstSpeaker ? this.players.get(this.firstSpeaker)?.name ?? null : null,
-      // Etat de jeu (public, sans secret)
       turnId,
       turnName: turnId ? this.players.get(turnId)?.name ?? null : null,
       clues: this.clues,
@@ -379,7 +454,6 @@ export class Room {
     };
   }
 
-  // Revelation complete de fin de partie (roles + mots).
   revealPayload() {
     return {
       winner: this.winner,

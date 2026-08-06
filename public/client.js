@@ -7,6 +7,9 @@ let myId = null;
 let state = null;
 let myRole = null; // { role, word } recu en prive
 let myVote = null; // id vote localement (surbrillance)
+let myProtection = null; // cible protegee (Gardien, ce tour)
+let devinUsed = false; // le Devin a-t-il utilise son pouvoir
+let devinResult = null; // { targetName, isTraitor }
 
 const $ = (id) => document.getElementById(id);
 const show = (el) => $(el).classList.remove("hidden");
@@ -25,8 +28,18 @@ const ROLE_INFO = {
   civil: { name: "Civil", hint: "Trouve les imposteurs sans dévoiler ton mot." },
   imposteur: { name: "Imposteur", hint: "Fais-toi passer pour un civil." },
   mister_white: { name: "Mister White", hint: "Tu n'as pas de mot. Bluffe à partir des indices des autres !" },
+  fou: { name: "Le Fou", hint: "Ton but : te faire éliminer au vote ! Sème le doute sur toi." },
+  gardien: { name: "Le Gardien", hint: "Pendant le vote, protège un joueur : s'il est le plus visé, il est sauvé." },
+  devin: { name: "Le Devin", hint: "Une fois, tu peux sonder un joueur pour savoir s'il est un imposteur." },
 };
-const ROLE_LABEL = { civil: "Civil", imposteur: "Imposteur", mister_white: "Mister White" };
+const ROLE_LABEL = {
+  civil: "Civil",
+  imposteur: "Imposteur",
+  mister_white: "Mister White",
+  fou: "Le Fou",
+  gardien: "Le Gardien",
+  devin: "Le Devin",
+};
 
 // --- Accueil -------------------------------------------------------------
 
@@ -99,13 +112,20 @@ function syncSettingsInputs() {
 
   renderThemeChips();
 
+  renderSpecialChips();
+
   const avail = state.counts.availablePairs;
   $("avail-pairs").textContent = `${avail} paire${avail > 1 ? "s" : ""}`;
   $("avail-pairs").classList.toggle("none", avail === 0);
 
-  $("civils-count").textContent = Math.max(0, state.counts.civils);
-  $("imposteurs-count").textContent = s.imposteurs;
-  $("white-count").textContent = s.misterWhite;
+  // Composition dynamique
+  const c = state.counts;
+  const parts = [`${Math.max(0, c.civils)} civils`, `${c.imposteurs} imposteurs`];
+  if (c.misterWhite) parts.push(`${c.misterWhite} Mister White`);
+  if (c.fou) parts.push("🃏 Fou");
+  if (c.gardien) parts.push("🛡️ Gardien");
+  if (c.devin) parts.push("🔎 Devin");
+  $("composition").textContent = parts.join(" · ");
 
   const v = state.validation;
   let err = "";
@@ -115,15 +135,24 @@ function syncSettingsInputs() {
   $("start-btn").disabled = !v.valid || avail === 0;
 }
 
-// Emet les reglages courants ; `extra` permet de forcer un champ (ex: themes).
-function emitSettings(extra = {}) {
-  socket.emit("update_settings", {
-    imposteurs: Number($("set-imposteurs").value),
-    misterWhite: Number($("set-white").value),
-    difficulte: $("set-difficulte").value,
-    themes: extra.themes !== undefined ? extra.themes : state.settings.themes || [],
+// Chaque réglage n'envoie QUE son champ ; le serveur fusionne (pas de course).
+function patchSettings(patch) {
+  socket.emit("update_settings", patch);
+}
+
+// Toggles des rôles spéciaux (0/1)
+function renderSpecialChips() {
+  const s = state.settings;
+  document.querySelectorAll("#special-chips .chip").forEach((chip) => {
+    chip.classList.toggle("active", !!s[chip.dataset.role]);
   });
 }
+document.querySelectorAll("#special-chips .chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const role = chip.dataset.role;
+    patchSettings({ [role]: state.settings[role] ? 0 : 1 });
+  });
+});
 
 // Compteurs +/-
 document.querySelectorAll(".step-btn").forEach((btn) => {
@@ -131,10 +160,11 @@ document.querySelectorAll(".step-btn").forEach((btn) => {
     const input = $(btn.dataset.target);
     const next = Math.max(0, Number(input.value) + Number(btn.dataset.delta));
     input.value = next;
-    emitSettings();
+    const key = btn.dataset.target === "set-white" ? "misterWhite" : "imposteurs";
+    patchSettings({ [key]: next });
   });
 });
-$("set-difficulte").addEventListener("change", () => emitSettings());
+$("set-difficulte").addEventListener("change", () => patchSettings({ difficulte: $("set-difficulte").value }));
 
 function renderThemeChips() {
   const wrap = $("theme-chips");
@@ -145,7 +175,7 @@ function renderThemeChips() {
   allChip.type = "button";
   allChip.className = "chip" + (selected.length === 0 ? " active" : "");
   allChip.textContent = "Tous";
-  allChip.addEventListener("click", () => emitSettings({ themes: [] }));
+  allChip.addEventListener("click", () => patchSettings({ themes: [] }));
   wrap.appendChild(allChip);
 
   for (const t of state.allThemes || []) {
@@ -157,7 +187,7 @@ function renderThemeChips() {
     chip.addEventListener("click", () => {
       let sel = [...(state.settings.themes || [])];
       sel = sel.includes(t) ? sel.filter((x) => x !== t) : [...sel, t];
-      emitSettings({ themes: sel });
+      patchSettings({ themes: sel });
     });
     wrap.appendChild(chip);
   }
@@ -220,6 +250,84 @@ function renderGame() {
   if (state.phase === "INDICES") renderIndices();
   else if (state.phase === "VOTE") renderVote();
   else if (state.phase === "WHITE_GUESS") renderWhite();
+
+  renderGardienPanel();
+  renderDevinPanel();
+}
+
+// --- Pouvoir du Gardien (pendant le vote) -------------------------------
+
+function renderGardienPanel() {
+  const panel = $("gardien-panel");
+  const meAlive = state.players.find((p) => p.id === myId)?.alive;
+  if (myRole?.role !== "gardien" || state.phase !== "VOTE" || !meAlive) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  const list = $("gardien-list");
+  list.innerHTML = "";
+  for (const p of state.players) {
+    if (!p.alive || p.id === myId) continue;
+    const btn = document.createElement("button");
+    btn.className = "btn vote-btn" + (myProtection === p.id ? " voted" : "");
+    btn.textContent = p.name;
+    btn.addEventListener("click", () => {
+      myProtection = p.id;
+      renderGardienPanel();
+      socket.emit("set_protection", { targetId: p.id }, (res) => {
+        if (!res?.ok) $("game-error").textContent = res?.error || "Erreur.";
+      });
+    });
+    const li = document.createElement("li");
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+}
+
+// --- Pouvoir du Devin (1 fois) ------------------------------------------
+
+function renderDevinPanel() {
+  const panel = $("devin-panel");
+  const meAlive = state.players.find((p) => p.id === myId)?.alive;
+  if (myRole?.role !== "devin" || !["INDICES", "VOTE"].includes(state.phase) || !meAlive) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+
+  if (devinResult) {
+    const rEl = $("devin-result");
+    rEl.classList.remove("hidden");
+    rEl.className = "devin-result " + (devinResult.isTraitor ? "traitor" : "clear");
+    rEl.textContent = devinResult.isTraitor
+      ? `🔎 ${devinResult.targetName} est dans le camp des IMPOSTEURS !`
+      : `🔎 ${devinResult.targetName} n'est pas un imposteur.`;
+  }
+
+  if (devinUsed) {
+    $("devin-hint").textContent = "Pouvoir utilisé.";
+    $("devin-list").innerHTML = "";
+    return;
+  }
+
+  $("devin-hint").classList.remove("hidden");
+  const list = $("devin-list");
+  list.innerHTML = "";
+  for (const p of state.players) {
+    if (!p.alive || p.id === myId) continue;
+    const btn = document.createElement("button");
+    btn.className = "btn vote-btn";
+    btn.textContent = p.name;
+    btn.addEventListener("click", () => {
+      socket.emit("devin_check", { targetId: p.id }, (res) => {
+        if (!res?.ok) $("game-error").textContent = res?.error || "Erreur.";
+      });
+    });
+    const li = document.createElement("li");
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
 }
 
 function renderClueLog() {
@@ -327,6 +435,10 @@ function renderEnd(reveal) {
     banner.textContent = "Les civils gagnent !";
     banner.className = "end-banner win-civils";
     $("end-trophy").textContent = "🏆";
+  } else if (reveal.winner === "fou") {
+    banner.textContent = "Le Fou gagne !";
+    banner.className = "end-banner win-fou";
+    $("end-trophy").textContent = "🃏";
   } else {
     banner.textContent = "Les imposteurs gagnent !";
     banner.className = "end-banner win-traitres";
@@ -369,6 +481,9 @@ socket.on("state", (s) => {
     case "LOBBY":
       myRole = null;
       myVote = null;
+      myProtection = null;
+      devinUsed = false;
+      devinResult = null;
       if (!$("screen-home").classList.contains("active")) {
         showScreen("screen-lobby");
         renderLobby();
@@ -382,6 +497,7 @@ socket.on("state", (s) => {
     case "VOTE":
     case "WHITE_GUESS":
       if (state.phase !== "VOTE") myVote = null; // reset entre les tours
+      if (state.phase === "INDICES") myProtection = null; // protection par tour de vote
       renderGame();
       break;
     case "ENDED":
@@ -392,6 +508,11 @@ socket.on("state", (s) => {
 
 socket.on("your_role", (info) => {
   myRole = info;
+  // remise à zéro des pouvoirs pour la nouvelle manche
+  myProtection = null;
+  devinUsed = false;
+  devinResult = null;
+  $("devin-result").classList.add("hidden");
   renderRoleCard(info);
   $("reveal-flip").classList.remove("flipped"); // carte face cachée au départ
   showScreen("screen-reveal");
@@ -416,6 +537,16 @@ socket.on("white_result", (info) => {
   else showBanner(`Mister White s'est trompé (${escapeHtml(info.guess)}).`, "warn");
 });
 
+socket.on("protected", (info) => {
+  showBanner(`🛡️ ${escapeHtml(info.name)} a été protégé par le Gardien !`, "gardien");
+});
+
+socket.on("devin_result", (info) => {
+  devinUsed = true;
+  devinResult = info;
+  renderDevinPanel();
+});
+
 socket.on("game_over", (reveal) => {
   // Si l'overlay d'élimination est encore affiché, on attend sa fermeture.
   if (!$("elim-overlay").classList.contains("hidden")) pendingEnd = reveal;
@@ -431,6 +562,9 @@ const VERDICT = {
   imposteur: "était un IMPOSTEUR",
   mister_white: "était MISTER WHITE",
   civil: "était INNOCENT",
+  fou: "était LE FOU 🃏",
+  gardien: "était LE GARDIEN 🛡️",
+  devin: "était LE DEVIN 🔎",
 };
 
 function showElimOverlay(info) {
@@ -485,6 +619,7 @@ function launchConfetti(winner) {
   const palettes = {
     civils: ["#4cd7a0", "#6c5ce7", "#f2f2f7", "#3ec7ff"],
     traitres: ["#e06c6c", "#e6c84c", "#f2f2f7", "#ff9f6c"],
+    fou: ["#d76cd7", "#e6c84c", "#6c5ce7", "#f2f2f7"],
   };
   const colors = palettes[winner] || palettes.civils;
 

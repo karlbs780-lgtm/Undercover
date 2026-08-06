@@ -11,6 +11,9 @@
   --civil: #4cd7a0;
   --imposteur: #e06c6c;
   --white: #e6c84c;
+  --fou: #d76cd7;
+  --gardien: #4c9ff0;
+  --devin: #38d6cf;
   --radius: 14px;
 }
 
@@ -332,5 +335,53 @@ h3 { font-size: 1.05rem; margin-bottom: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .flip-card-inner, #elim-inner.reveal, .end-trophy, .end-banner, .flip-q { animation: none !important; transition: none !important; }
 }
+
+/* ============ RÔLES SPÉCIAUX ============ */
+
+/* Carte de rôle */
+.role-card.fou { border-color: var(--fou); }
+.role-card.gardien { border-color: var(--gardien); }
+.role-card.devin { border-color: var(--devin); }
+.role-card.fou .role-name { color: var(--fou); }
+.role-card.gardien .role-name { color: var(--gardien); }
+.role-card.devin .role-name { color: var(--devin); }
+
+/* Pastille de rôle (en jeu) */
+.role-chip.fou { color: var(--fou); border-color: var(--fou); }
+.role-chip.gardien { color: var(--gardien); border-color: var(--gardien); }
+.role-chip.devin { color: var(--devin); border-color: var(--devin); }
+
+/* Overlay d'élimination */
+.elim-front.fou { border-color: var(--fou); box-shadow: 0 0 40px -8px var(--fou); }
+.elim-front.gardien { border-color: var(--gardien); box-shadow: 0 0 40px -8px var(--gardien); }
+.elim-front.devin { border-color: var(--devin); box-shadow: 0 0 40px -8px var(--devin); }
+.elim-front.fou .elim-verdict { color: var(--fou); }
+.elim-front.gardien .elim-verdict { color: var(--gardien); }
+.elim-front.devin .elim-verdict { color: var(--devin); }
+
+/* Liste des rôles en fin de partie */
+.er-role.fou { color: var(--fou); }
+.er-role.gardien { color: var(--gardien); }
+.er-role.devin { color: var(--devin); }
+
+/* Bannière de victoire du Fou */
+.end-banner.win-fou { color: var(--fou); }
+
+/* Bannière transitoire du Gardien */
+.banner.gardien { background: #1e2f45; color: var(--gardien); }
+
+/* Panneaux de pouvoir (Gardien / Devin) */
+.power-panel {
+  margin-top: 18px; padding: 16px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--surface-2);
+}
+.power-panel.gardien { border-color: var(--gardien); }
+.power-panel.devin { border-color: var(--devin); }
+.power-panel h3 { margin-bottom: 8px; }
+.devin-result {
+  padding: 10px 14px; border-radius: var(--radius); margin-bottom: 12px; font-weight: 700; text-align: center;
+}
+.devin-result.traitor { background: #3d1e1e; color: var(--imposteur); }
+.devin-result.clear { background: #1e3d30; color: var(--civil); }
 
 .hidden { display: none !important; }

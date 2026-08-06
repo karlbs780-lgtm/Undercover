@@ -72,6 +72,9 @@ function applyResult(room, result) {
   if (result.type === "white_result") {
     io.to(room.code).emit("white_result", { correct: result.correct, guess: result.guess });
   }
+  if (result.type === "protected") {
+    io.to(room.code).emit("protected", { name: result.name });
+  }
   if (result.ended) {
     io.to(room.code).emit("game_over", room.revealPayload());
   }
@@ -170,6 +173,22 @@ io.on("connection", (socket) => {
     const res = room.whiteGuess(socket.id, guess);
     if (!res.ok) return cb?.({ ok: false, error: res.error });
     applyResult(room, res);
+    cb?.({ ok: true });
+  });
+
+  socket.on("set_protection", ({ targetId } = {}, cb) => {
+    const room = getRoom();
+    if (!room) return cb?.({ ok: false, error: "Salle introuvable." });
+    const res = room.setProtection(socket.id, targetId);
+    cb?.(res); // protection secrète : aucune diffusion
+  });
+
+  socket.on("devin_check", ({ targetId } = {}, cb) => {
+    const room = getRoom();
+    if (!room) return cb?.({ ok: false, error: "Salle introuvable." });
+    const res = room.devinCheck(socket.id, targetId);
+    if (!res.ok) return cb?.(res);
+    io.to(socket.id).emit("devin_result", { targetName: res.targetName, isTraitor: res.isTraitor });
     cb?.({ ok: true });
   });
 
