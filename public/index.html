@@ -69,6 +69,16 @@
             <option value="difficile">Difficile</option>
           </select>
         </div>
+        <div class="setting-row">
+          <label for="set-cluetimer">Temps par indice</label>
+          <select id="set-cluetimer">
+            <option value="0">Aucun</option>
+            <option value="10">10 s</option>
+            <option value="15">15 s</option>
+            <option value="20">20 s</option>
+            <option value="30">30 s</option>
+          </select>
+        </div>
 
         <div class="special-section">
           <div class="theme-head"><span>Rôles spéciaux</span></div>
@@ -143,6 +153,10 @@
       <!-- Zone d'action (change selon la phase) -->
       <div id="phase-indices" class="phase-box hidden">
         <p id="turn-info" class="turn-info"></p>
+        <div id="clue-timer" class="clue-timer hidden">
+          <div class="clue-timer-bar"><span id="clue-timer-fill"></span></div>
+          <span id="clue-timer-text"></span>
+        </div>
         <div id="clue-input-row" class="join-row hidden">
           <input id="clue-input" type="text" maxlength="60" placeholder="Ton indice…" autocomplete="off" />
           <button id="clue-send" class="btn">Envoyer</button>

@@ -11,6 +11,7 @@ let myHuntVote = null; // id vote lors de la chasse a l'IA
 let myProtection = null; // cible protegee (Gardien, ce tour)
 let devinUsed = false; // le Devin a-t-il utilise son pouvoir
 let devinResult = null; // { targetName, isTraitor }
+let clueCountdownTimer = null; // interval du compte a rebours d'indice
 
 const $ = (id) => document.getElementById(id);
 const show = (el) => $(el).classList.remove("hidden");
@@ -112,6 +113,7 @@ function syncSettingsInputs() {
   $("set-imposteurs").value = s.imposteurs;
   $("set-white").value = s.misterWhite;
   if (document.activeElement !== $("set-difficulte")) $("set-difficulte").value = s.difficulte || "";
+  if (document.activeElement !== $("set-cluetimer")) $("set-cluetimer").value = String(s.clueTimer ?? 15);
 
   renderThemeChips();
 
@@ -176,6 +178,7 @@ document.querySelectorAll(".step-btn").forEach((btn) => {
   });
 });
 $("set-difficulte").addEventListener("change", () => patchSettings({ difficulte: $("set-difficulte").value }));
+$("set-cluetimer").addEventListener("change", () => patchSettings({ clueTimer: Number($("set-cluetimer").value) }));
 
 function renderThemeChips() {
   const wrap = $("theme-chips");
@@ -242,6 +245,7 @@ $("begin-clues-btn").addEventListener("click", () => {
 
 function renderGame() {
   showScreen("screen-game");
+  clearInterval(clueCountdownTimer); // (re)demarre par renderIndices si besoin
 
   // Rappel de mon role/mot
   if (myRole) {
@@ -368,6 +372,29 @@ function renderIndices() {
       : `Tu es éliminé. Au tour de ${state.turnName ?? "…"}…`;
     hide("clue-input-row");
   }
+  startClueCountdown();
+}
+
+// Compte à rebours du tour d'indice (piloté par l'échéance serveur).
+function startClueCountdown() {
+  clearInterval(clueCountdownTimer);
+  const el = $("clue-timer");
+  const tick = () => {
+    if (!state || state.phase !== "INDICES" || !state.turnDeadline || !state.clueTimer) {
+      el.classList.add("hidden");
+      clearInterval(clueCountdownTimer);
+      return;
+    }
+    const remaining = Math.max(0, state.turnDeadline - Date.now());
+    const pct = Math.max(0, Math.min(100, (remaining / (state.clueTimer * 1000)) * 100));
+    el.classList.remove("hidden");
+    el.classList.toggle("low", remaining <= 5000);
+    $("clue-timer-fill").style.width = pct + "%";
+    $("clue-timer-text").textContent = Math.ceil(remaining / 1000) + " s";
+    if (remaining <= 0) clearInterval(clueCountdownTimer);
+  };
+  tick();
+  clueCountdownTimer = setInterval(tick, 250);
 }
 
 function sendClue() {

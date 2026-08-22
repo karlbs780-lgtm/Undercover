@@ -44,10 +44,11 @@ export class Room {
     this.players = new Map(); // id -> { id, name, connected, alive }
     this.phase = "LOBBY";
     this.customized = false;
-    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0, ai: 0, camouflage: "facile" };
+    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0, ai: 0, camouflage: "facile", clueTimer: 15 };
     this.aiId = null; // id du joueur IA (virtuel), s'il est active
     this.scoreHumans = 0; // chasse a l'IA : manches ou l'IA a ete demasquee
     this.scoreAI = 0; // manches ou l'IA s'est echappee
+    this.turnDeadline = null; // echeance (epoch ms) du tour d'indice en cours (minuteur)
 
     this.playedPairs = new Set();
     this.resetRound();
@@ -102,7 +103,7 @@ export class Room {
     this.settings.misterWhite = d.misterWhite;
   }
 
-  updateSettings({ imposteurs, misterWhite, difficulte, themes, fou, gardien, devin, ai, camouflage }) {
+  updateSettings({ imposteurs, misterWhite, difficulte, themes, fou, gardien, devin, ai, camouflage, clueTimer }) {
     if (typeof imposteurs === "number") this.settings.imposteurs = Math.max(0, Math.floor(imposteurs));
     if (typeof misterWhite === "number") this.settings.misterWhite = Math.max(0, Math.floor(misterWhite));
     if (typeof fou === "number") this.settings.fou = Math.min(1, Math.max(0, Math.floor(fou)));
@@ -115,6 +116,7 @@ export class Room {
       this.syncAIPlayer();
     }
     if (camouflage === "facile" || camouflage === "difficile") this.settings.camouflage = camouflage;
+    if (typeof clueTimer === "number") this.settings.clueTimer = Math.min(120, Math.max(0, Math.floor(clueTimer)));
     this.customized = true;
   }
 
@@ -582,6 +584,8 @@ export class Room {
       firstSpeakerName: this.firstSpeaker ? this.displayName(this.firstSpeaker) : null,
       turnId,
       turnName: turnId ? this.displayName(turnId) : null,
+      turnDeadline: this.phase === "INDICES" ? this.turnDeadline : null,
+      clueTimer: this.settings.clueTimer,
       clues: anon ? this.clues.map((c) => ({ ...c, name: this.aliases[c.playerId] ?? c.name })) : this.clues,
       voters: [...this.votes.keys()],
       huntVoters: [...this.huntVotes.keys()],

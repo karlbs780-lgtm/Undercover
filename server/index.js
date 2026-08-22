@@ -89,6 +89,7 @@ function applyResult(room, result) {
   if (result.ended) {
     io.to(room.code).emit("game_over", room.revealPayload());
   }
+  armClueTimer(room);
   broadcast(room);
   driveAI(room);
 }
@@ -138,7 +139,7 @@ function driveAI(room) {
     scheduleAI(room, async () => {
       const text = await generateClue(room);
       const res = room.submitClue(room.aiId, text);
-      if (res.ok) broadcast(room);
+      if (res.ok) { armClueTimer(room); broadcast(room); }
     });
     return;
   }
@@ -151,6 +152,38 @@ function driveAI(room) {
     });
     return;
   }
+}
+
+// --- Minuteur d'indice ----------------------------------------------------
+// Chaque tour d'INDICES a une echeance. Si le joueur ne repond pas a temps, on
+// soumet "…" a sa place et on avance. Le compte a rebours vaut pour TOUS les
+// tours (IA comprise) pour ne pas trahir le bot. Re-arme seulement au changement
+// de tour (garde armedTurn), donc les appels repetes sont sans risque.
+function armClueTimer(room) {
+  const secs = room.settings.clueTimer || 0;
+  if (room.phase !== "INDICES" || !secs) {
+    clearTimeout(room._clueTimer);
+    room._clueTimer = null;
+    room.turnDeadline = null;
+    room.armedTurn = null;
+    return;
+  }
+  const turnId = room.currentClueOrder[room.cluePointer];
+  if (!turnId) return;
+  if (room.armedTurn === turnId && room._clueTimer) return;
+  clearTimeout(room._clueTimer);
+  room.armedTurn = turnId;
+  room.turnDeadline = Date.now() + secs * 1000;
+  room._clueTimer = setTimeout(() => {
+    if (room.phase === "INDICES" && room.currentClueOrder[room.cluePointer] === turnId) {
+      const res = room.submitClue(turnId, "…");
+      if (res.ok) {
+        armClueTimer(room);
+        broadcast(room);
+        driveAI(room);
+      }
+    }
+  }, secs * 1000);
 }
 
 // --- Socket.IO -----------------------------------------------------------
@@ -217,6 +250,7 @@ io.on("connection", (socket) => {
     if (!room) return;
     if (room.phase !== "REVEAL") return cb?.({ ok: false, error: "Impossible maintenant." });
     room.beginClueRound();
+    armClueTimer(room);
     broadcast(room);
     driveAI(room);
     cb?.({ ok: true });
@@ -227,6 +261,7 @@ io.on("connection", (socket) => {
     if (!room) return cb?.({ ok: false, error: "Salle introuvable." });
     const res = room.submitClue(socket.id, text);
     if (!res.ok) return cb?.({ ok: false, error: res.error });
+    armClueTimer(room);
     broadcast(room);
     driveAI(room);
     cb?.({ ok: true });
@@ -298,6 +333,7 @@ io.on("connection", (socket) => {
       room.removePlayer(socket.id);
       if (room.humanCount() === 0) {
         clearTimeout(room.aiTimer);
+        clearTimeout(room._clueTimer);
         rooms.delete(room.code);
         return;
       }
