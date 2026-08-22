@@ -19,39 +19,38 @@ export function aiConfigured() {
 // fait echouer l'appel (jamais la cle exposee).
 export async function selfTest() {
   if (!genai) return { reason: "GEMINI_API_KEY absente" };
-  const base = { model: MODEL, contents: [{ role: "user", parts: [{ text: "Dis juste : OK" }] }] };
-  const variants = [
-    ["minimal", {}],
-    ["+maxTokens", { maxOutputTokens: 30 }],
-    ["+system", { maxOutputTokens: 30, systemInstruction: "Réponds en un seul mot." }],
-    ["+temp", { maxOutputTokens: 30, systemInstruction: "Réponds en un seul mot.", temperature: 1.0 }],
-    ["+thinkBudget0", { maxOutputTokens: 30, systemInstruction: "Réponds en un seul mot.", temperature: 1.0, thinkingConfig: { thinkingBudget: 0 } }],
-  ];
-  const results = [];
-  for (const [name, config] of variants) {
-    try {
-      const res = await genai.models.generateContent({ ...base, config });
-      results.push({ name, ok: true, text: (res.text || "").trim().slice(0, 40) });
-    } catch (e) {
-      results.push({ name, ok: false, error: String(e?.message || e).replace(/\s+/g, " ").slice(0, 140) });
-    }
+  try {
+    const clue = await generateClueRaw();
+    return { ok: true, model: MODEL, sample: clue };
+  } catch (e) {
+    return { ok: false, model: MODEL, error: String(e?.message || e).replace(/\s+/g, " ").slice(0, 200) };
   }
-  return { model: MODEL, results };
+}
+
+// Un vrai appel via ask() (meme forme que le jeu) pour verifier de bout en bout.
+async function generateClueRaw() {
+  const res = await genai.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text: "Donne un indice d'un mot sur le mot « chat », sans le dire." }] }],
+    config: { systemInstruction: "Tu joues au jeu de l'imposteur. Réponds par un seul mot.", maxOutputTokens: 512, temperature: 1.0 },
+  });
+  return (res.text || "").trim().slice(0, 60);
 }
 
 // Un appel Gemini court, sans « thinking » (reponses rapides). Renvoie une
 // chaine, ou null en cas d'echec (l'appelant gere le repli).
-async function ask(system, user, maxTokens = 48) {
+async function ask(system, user, maxTokens = 512) {
   if (!genai) return null;
   try {
     const res = await genai.models.generateContent({
       model: MODEL,
       contents: [{ role: "user", parts: [{ text: user }] }],
+      // Pas de thinkingConfig (rejete par Gemini 3). maxOutputTokens genereux car
+      // le modele consomme des tokens de reflexion avant de repondre.
       config: {
         systemInstruction: system,
         maxOutputTokens: maxTokens,
         temperature: 1.0,
-        thinkingConfig: { thinkingBudget: 0 },
       },
     });
     return (res.text || "").trim();
@@ -96,7 +95,7 @@ export async function generateClue(room) {
   const system = `Tu joues au jeu de l'imposteur (type Undercover) en français, avec des amis. Tu es « ${me?.name} ». À ton tour, tu donnes UN SEUL indice très court (1 à 4 mots) sur ton mot, exactement comme un vrai joueur humain : naturel, relâché, parfois une petite faute de frappe. Ne révèle JAMAIS que tu es une IA. Réponds UNIQUEMENT par l'indice, sans guillemets, sans ton nom, sans phrase autour.`;
   const user = `${roleLine}\n\nIndices déjà donnés :\n${cluesText(room)}\n\nTon indice (max 4 mots) :`;
 
-  const out = cleanClue(await ask(system, user, 40));
+  const out = cleanClue(await ask(system, user, 512));
   return out || FALLBACK_CLUES[Math.floor(Math.random() * FALLBACK_CLUES.length)];
 }
 
@@ -120,7 +119,7 @@ export async function chooseVote(room) {
   const system = `Tu joues au jeu de l'imposteur en français. Tu dois voter pour UN joueur à éliminer. ${goal} Réponds UNIQUEMENT par le prénom exact de l'un des joueurs proposés, rien d'autre.`;
   const user = `Joueurs (choisis-en un) : ${names.join(", ")}\n\nIndices donnés :\n${cluesText(room)}\n\nPour qui votes-tu ?`;
 
-  const ans = (await ask(system, user, 12)) || "";
+  const ans = (await ask(system, user, 256)) || "";
   let target = candidates.find((id) => norm(room.players.get(id)?.name) === norm(ans));
   if (!target && ans) target = candidates.find((id) => norm(ans).includes(norm(room.players.get(id)?.name)));
   if (!target) target = candidates[Math.floor(Math.random() * candidates.length)];
@@ -133,7 +132,7 @@ export async function guessWord(room) {
   const system =
     "Tu es Mister White dans un jeu de l'imposteur. Devine le MOT commun des civils à partir des indices donnés. Réponds UNIQUEMENT par un seul mot, sans phrase.";
   const user = `Indices donnés :\n${cluesText(room)}\n\nLe mot des civils est probablement :`;
-  let out = (await ask(system, user, 10)) || "";
+  let out = (await ask(system, user, 128)) || "";
   out = (out.split(/\s+/)[0] || "").replace(/[^\p{L}\-]/gu, "");
   if (!out) {
     const texts = room.clues.map((c) => c.text).filter(Boolean);
