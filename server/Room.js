@@ -9,7 +9,7 @@
 // Camps : bad = imposteur+mister_white ; good = civil+gardien+devin ;
 //         fou = neutre (gagne s'il est elimine au vote).
 
-import { defaultSetup, drawPair, assignRoles, countAvailablePairs } from "./gameLogic.js";
+import { defaultSetup, drawPair, assignRoles, countAvailablePairs, shuffle } from "./gameLogic.js";
 import { validateSetup } from "./validation.js";
 import { pairKey, THEMES } from "./words.js";
 
@@ -19,6 +19,14 @@ const CIVIL_LIKE = ["civil", "gardien", "devin", "fou"];
 
 // Prenoms d'apparence humaine pour le joueur IA (il doit se fondre dans la liste).
 const AI_NAMES = ["Léa", "Hugo", "Manon", "Nathan", "Chloé", "Lucas", "Jade", "Enzo", "Camille", "Sacha", "Inès", "Noah", "Zoé", "Tom", "Anaïs", "Ryan", "Maël", "Lina"];
+
+// Noms de code anonymes (mode IA) : en partie, chacun est un animal, pour qu'on
+// ne puisse pas identifier l'IA par appel des pseudos. Vrais noms reveles a la fin.
+const ALIASES = [
+  "🦊 Renard", "🦉 Hibou", "🐺 Loup", "🐻 Ours", "🦌 Cerf", "🦅 Aigle",
+  "🐬 Dauphin", "🦁 Lion", "🐯 Tigre", "🐨 Koala", "🦝 Raton", "🦔 Hérisson",
+  "🐸 Grenouille", "🐢 Tortue", "🦎 Lézard", "🦩 Flamant", "🦈 Requin", "🦫 Castor",
+];
 
 function normalizeWord(s) {
   return (s ?? "")
@@ -45,6 +53,7 @@ export class Room {
 
   resetRound() {
     this.roles = {}; // id -> { role, word }  (SECRET)
+    this.aliases = {}; // id -> nom de code anonyme (mode IA)
     this.currentPair = null;
     this.firstSpeaker = null;
     this.order = [];
@@ -107,6 +116,17 @@ export class Room {
     return [...this.players.values()].filter((p) => !p.isAI).length;
   }
 
+  // Mode anonyme actif des qu'un joueur IA est present (empeche l'appel des pseudos).
+  isAnonymous() {
+    return !!this.settings.ai;
+  }
+
+  // Nom a afficher : alias anonyme en partie, sinon le vrai pseudo.
+  displayName(id) {
+    if (this.isAnonymous() && this.aliases[id]) return this.aliases[id];
+    return this.players.get(id)?.name ?? "?";
+  }
+
   pickAIName() {
     const used = new Set([...this.players.values()].map((p) => p.name.toLowerCase()));
     const pool = AI_NAMES.filter((n) => !used.has(n.toLowerCase()));
@@ -153,6 +173,14 @@ export class Room {
     this.resetRound();
     this.order = [...this.players.keys()];
     for (const p of this.players.values()) p.alive = true;
+
+    // Noms de code anonymes (mode IA) : un alias par joueur, tire au hasard.
+    if (this.isAnonymous()) {
+      const pool = shuffle(ALIASES);
+      this.order.forEach((id, i) => {
+        this.aliases[id] = pool[i] ?? `Joueur ${i + 1}`;
+      });
+    }
 
     const { roles, firstSpeaker } = assignRoles(this.order, setup, pair);
     this.currentPair = pair;
@@ -252,7 +280,7 @@ export class Room {
 
     this.devinUsedBy.add(devinId);
     const isTraitor = BAD_ROLES.includes(this.roles[targetId]?.role);
-    return { ok: true, private: true, targetName: this.players.get(targetId).name, isTraitor };
+    return { ok: true, private: true, targetName: this.displayName(targetId), isTraitor };
   }
 
   // --- Phase VOTE --------------------------------------------------------
@@ -273,7 +301,7 @@ export class Room {
 
   namedTally(tally) {
     return Object.entries(tally)
-      .map(([id, votes]) => ({ name: this.players.get(id)?.name ?? "?", votes }))
+      .map(([id, votes]) => ({ name: this.displayName(id), votes }))
       .sort((a, b) => b.votes - a.votes);
   }
 
@@ -298,7 +326,7 @@ export class Room {
       if (!this.tieRevote) {
         this.tieRevote = true;
         this.votes = new Map();
-        return { ok: true, type: "tie", tied: leaders.map((id) => this.players.get(id)?.name), revote: true };
+        return { ok: true, type: "tie", tied: leaders.map((id) => this.displayName(id)), revote: true };
       }
       eliminatedId = leaders[Math.floor(Math.random() * leaders.length)];
       wasTie = true;
@@ -308,7 +336,7 @@ export class Room {
 
     // Protection du Gardien : la cible la plus visee est sauvee.
     if (this.protectedId && eliminatedId === this.protectedId) {
-      const savedName = this.players.get(eliminatedId)?.name;
+      const savedName = this.displayName(eliminatedId);
       this.protectedId = null;
       this.beginClueRound();
       return { ok: true, type: "protected", name: savedName, nextPhase: "INDICES" };
@@ -327,7 +355,7 @@ export class Room {
       ok: true,
       type: "elimination",
       eliminatedId: id,
-      name: p.name,
+      name: this.displayName(id),
       role,
       wasTie,
       tally: this.namedTally(tally),
@@ -453,15 +481,18 @@ export class Room {
     });
     const availablePairs = countAvailablePairs({ difficulte: s.difficulte, themes: s.themes });
     const turnId = this.phase === "INDICES" ? this.currentClueOrder[this.cluePointer] ?? null : null;
+    const anon = this.isAnonymous();
 
     return {
       code: this.code,
       hostId: this.hostId,
       phase: this.phase,
       round: this.round,
+      anonymous: anon,
       players: [...this.players.values()].map((p) => ({
         id: p.id,
-        name: p.name,
+        // Mode anonyme : alias en partie, nom masque (null) au lobby.
+        name: anon ? this.aliases[p.id] ?? null : p.name,
         connected: p.connected,
         alive: p.alive,
         role: this.revealed.has(p.id) ? this.roles[p.id]?.role ?? null : null,
@@ -480,10 +511,10 @@ export class Room {
         availablePairs,
       },
       validation: { valid: validation.valid, errors: validation.errors },
-      firstSpeakerName: this.firstSpeaker ? this.players.get(this.firstSpeaker)?.name ?? null : null,
+      firstSpeakerName: this.firstSpeaker ? this.displayName(this.firstSpeaker) : null,
       turnId,
-      turnName: turnId ? this.players.get(turnId)?.name ?? null : null,
-      clues: this.clues,
+      turnName: turnId ? this.displayName(turnId) : null,
+      clues: anon ? this.clues.map((c) => ({ ...c, name: this.aliases[c.playerId] ?? c.name })) : this.clues,
       voters: [...this.votes.keys()],
       aliveCount: this.aliveIds().length,
       pendingWhiteId: this.pendingWhiteId,
@@ -501,6 +532,7 @@ export class Room {
       roles: [...this.players.entries()].map(([id, p]) => ({
         id,
         name: p.name,
+        alias: this.aliases[id] ?? null,
         role: this.roles[id]?.role ?? null,
         word: this.roles[id]?.word ?? null,
         isAI: !!p.isAI,

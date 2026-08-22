@@ -197,7 +197,7 @@ io.on("connection", (socket) => {
     const res = room.startGame();
     if (!res.ok) return cb?.({ ok: false, error: res.error });
     dealRoles(room);
-    io.to(room.code).emit("game_started", { firstSpeaker: room.players.get(room.firstSpeaker)?.name ?? null });
+    io.to(room.code).emit("game_started", { firstSpeaker: room.firstSpeaker ? room.displayName(room.firstSpeaker) : null });
     broadcast(room);
     cb?.({ ok: true });
   });

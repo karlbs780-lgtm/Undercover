@@ -398,3 +398,13 @@ h3 { font-size: 1.05rem; margin-bottom: 14px; }
   background: rgba(56, 214, 207, 0.1); border: 1px solid rgba(56, 214, 207, 0.35);
   border-radius: var(--radius); padding: 10px 12px;
 }
+
+/* --- Mode anonyme (noms de code quand l'IA joue) --- */
+.anon-note {
+  color: var(--muted); font-size: 0.82rem; line-height: 1.4; text-align: center;
+  margin: 10px 0 4px; padding: 8px 10px; border-radius: var(--radius);
+  background: rgba(56, 214, 207, 0.08); border: 1px solid rgba(56, 214, 207, 0.25);
+}
+.er-alias {
+  display: inline-block; margin-right: 8px; font-weight: 700; color: var(--devin);
+}

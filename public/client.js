@@ -90,9 +90,11 @@ function renderLobby() {
     const li = document.createElement("li");
     const crown = p.id === state.hostId ? '<span class="host-crown">👑</span>' : "";
     const isYou = p.id === myId;
-    li.innerHTML = `${crown}<span class="${isYou ? "you" : ""}">${escapeHtml(p.name)}</span>${isYou ? '<span class="tag">toi</span>' : ""}`;
+    const display = p.name ?? "Joueur"; // mode anonyme : pseudo masque
+    li.innerHTML = `${crown}<span class="${isYou ? "you" : ""}">${escapeHtml(display)}</span>${isYou ? '<span class="tag">toi</span>' : ""}`;
     list.appendChild(li);
   }
+  $("lobby-anon-note").classList.toggle("hidden", !state.anonymous);
 
   if (isHost()) {
     show("host-settings");
@@ -449,9 +451,11 @@ function renderEnd(reveal) {
   $("end-reason").textContent = reveal.reason || "";
   $("end-word").textContent = reveal.pair ? reveal.pair.civil : "—";
 
+  const aiRow = reveal.roles.find((r) => r.isAI);
   const aiEl = $("end-ai");
-  if (reveal.aiName) {
-    aiEl.textContent = `🤖 Il y avait une IA parmi vous : ${reveal.aiName}`;
+  if (aiRow) {
+    const who = aiRow.alias || aiRow.name;
+    aiEl.textContent = `🤖 L'IA, c'était ${who} !`;
     aiEl.classList.remove("hidden");
   } else {
     aiEl.classList.add("hidden");
@@ -463,8 +467,9 @@ function renderEnd(reveal) {
     const li = document.createElement("li");
     const label = ROLE_LABEL[r.role] || r.role;
     const w = r.word ? ` · ${r.word}` : "";
+    const alias = r.alias ? `<span class="er-alias">${escapeHtml(r.alias)}</span>` : "";
     const aiTag = r.isAI ? ' <span class="er-ai">🤖 IA</span>' : "";
-    li.innerHTML = `<span class="er-name">${escapeHtml(r.name)}${aiTag}</span><span class="er-role ${r.role}">${label}${escapeHtml(w)}</span>`;
+    li.innerHTML = `<span class="er-name">${alias}${escapeHtml(r.name)}${aiTag}</span><span class="er-role ${r.role}">${label}${escapeHtml(w)}</span>`;
     list.appendChild(li);
   }
 
