@@ -8,7 +8,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 const KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 const genai = KEY ? new GoogleGenAI({ apiKey: KEY }) : null;
 
 export function aiConfigured() {
@@ -19,32 +19,16 @@ export function aiConfigured() {
 // fait echouer l'appel (jamais la cle exposee).
 export async function selfTest() {
   if (!genai) return { reason: "GEMINI_API_KEY absente" };
-  // Sonde plusieurs modeles pour trouver lequel est disponible ET a du quota gratuit.
-  const models = [
-    "gemini-3.6-flash",
-    "gemini-flash-latest",
-    "gemini-flash-lite-latest",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-  ];
-  const probe = [];
-  for (const m of models) {
-    try {
-      const res = await genai.models.generateContent({
-        model: m,
-        contents: [{ role: "user", parts: [{ text: "Dis juste : OK" }] }],
-        config: { maxOutputTokens: 256, temperature: 1.0 },
-      });
-      probe.push({ model: m, ok: true, text: (res.text || "").trim().slice(0, 30) });
-    } catch (e) {
-      const msg = String(e?.message || e);
-      const code = (msg.match(/"code":\s*(\d+)/) || msg.match(/\b(4\d\d|5\d\d)\b/) || [])[1] || "?";
-      probe.push({ model: m, ok: false, code });
-    }
-    await new Promise((r) => setTimeout(r, 1300));
+  try {
+    const res = await genai.models.generateContent({
+      model: MODEL,
+      contents: [{ role: "user", parts: [{ text: "Donne un indice d'un seul mot sur « chat », sans dire le mot." }] }],
+      config: { systemInstruction: "Tu joues au jeu de l'imposteur. Réponds par un seul mot.", maxOutputTokens: 512, temperature: 1.0 },
+    });
+    return { ok: true, model: MODEL, sample: (res.text || "").trim().slice(0, 60) };
+  } catch (e) {
+    return { ok: false, model: MODEL, error: String(e?.message || e).replace(/\s+/g, " ").slice(0, 200) };
   }
-  return { current: MODEL, probe };
 }
 
 // Un appel Gemini court, sans « thinking » (reponses rapides). Renvoie une
