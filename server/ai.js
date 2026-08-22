@@ -8,7 +8,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 const KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 const genai = KEY ? new GoogleGenAI({ apiKey: KEY }) : null;
 
 export function aiConfigured() {

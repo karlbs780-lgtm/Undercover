@@ -22,7 +22,7 @@ app.use(express.static(join(__dirname, "..", "public")));
 
 // Diagnostic (aucun secret) : indique si le joueur IA est bien configure.
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, aiConfigured: aiConfigured(), model: process.env.GEMINI_MODEL || "gemini-2.5-flash" });
+  res.json({ ok: true, aiConfigured: aiConfigured(), model: process.env.GEMINI_MODEL || "gemini-3.6-flash" });
 });
 
 // Diagnostic approfondi : fait un vrai appel Gemini et renvoie le resultat/erreur.
