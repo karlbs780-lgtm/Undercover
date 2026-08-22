@@ -125,6 +125,7 @@ function syncSettingsInputs() {
   if (c.fou) parts.push("🃏 Fou");
   if (c.gardien) parts.push("🛡️ Gardien");
   if (c.devin) parts.push("🔎 Devin");
+  if (state.settings.ai) parts.push("🤖 IA");
   $("composition").textContent = parts.join(" · ");
 
   const v = state.validation;
@@ -448,13 +449,22 @@ function renderEnd(reveal) {
   $("end-reason").textContent = reveal.reason || "";
   $("end-word").textContent = reveal.pair ? reveal.pair.civil : "—";
 
+  const aiEl = $("end-ai");
+  if (reveal.aiName) {
+    aiEl.textContent = `🤖 Il y avait une IA parmi vous : ${reveal.aiName}`;
+    aiEl.classList.remove("hidden");
+  } else {
+    aiEl.classList.add("hidden");
+  }
+
   const list = $("end-roles");
   list.innerHTML = "";
   for (const r of reveal.roles) {
     const li = document.createElement("li");
     const label = ROLE_LABEL[r.role] || r.role;
     const w = r.word ? ` · ${r.word}` : "";
-    li.innerHTML = `<span class="er-name">${escapeHtml(r.name)}</span><span class="er-role ${r.role}">${label}${escapeHtml(w)}</span>`;
+    const aiTag = r.isAI ? ' <span class="er-ai">🤖 IA</span>' : "";
+    li.innerHTML = `<span class="er-name">${escapeHtml(r.name)}${aiTag}</span><span class="er-role ${r.role}">${label}${escapeHtml(w)}</span>`;
     list.appendChild(li);
   }
 

@@ -385,3 +385,16 @@ h3 { font-size: 1.05rem; margin-bottom: 14px; }
 .devin-result.clear { background: #1e3d30; color: var(--civil); }
 
 .hidden { display: none !important; }
+
+/* --- Joueur IA (variante « imposteur IA ») --- */
+.chip-ai.active { background: var(--devin); border-color: var(--devin); color: #04211f; }
+.special-hint { color: var(--muted); font-size: 0.82rem; margin: 8px 2px 0; line-height: 1.4; }
+.er-ai {
+  display: inline-block; margin-left: 6px; font-size: 0.72rem; font-weight: 700;
+  color: #04211f; background: var(--devin); border-radius: 6px; padding: 1px 6px; vertical-align: 1px;
+}
+.end-ai {
+  text-align: center; margin: 6px 0 10px; font-weight: 700; color: var(--devin);
+  background: rgba(56, 214, 207, 0.1); border: 1px solid rgba(56, 214, 207, 0.35);
+  border-radius: var(--radius); padding: 10px 12px;
+}

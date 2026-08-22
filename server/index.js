@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 import { Room } from "./Room.js";
+import { generateClue, chooseVote, guessWord, aiConfigured } from "./ai.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -79,6 +80,67 @@ function applyResult(room, result) {
     io.to(room.code).emit("game_over", room.revealPayload());
   }
   broadcast(room);
+  driveAI(room);
+}
+
+// --- Joueur IA : joue automatiquement son tour (indice / vote / white) ----
+// Un seul planificateur par salle (room.aiTimer + garde room.aiPending) : on
+// reflechit apres CHAQUE changement d'etat pour voir si c'est a l'IA d'agir.
+
+function aiDelay(min = 1500, max = 3400) {
+  return min + Math.floor(Math.random() * (max - min));
+}
+
+function scheduleAI(room, fn) {
+  room.aiPending = true;
+  clearTimeout(room.aiTimer);
+  room.aiTimer = setTimeout(async () => {
+    try {
+      await fn();
+    } catch (e) {
+      console.error("[AI] action:", e?.message || e);
+    } finally {
+      room.aiPending = false;
+      driveAI(room);
+    }
+  }, aiDelay());
+}
+
+function driveAI(room) {
+  if (!room || !room.aiId || room.aiPending) return;
+  const ai = room.players.get(room.aiId);
+  if (!ai) return;
+
+  // Mister White demasque : l'IA doit deviner le mot (meme si elle vient d'etre
+  // eliminee — donc on teste ce cas AVANT le garde "en vie").
+  if (room.phase === "WHITE_GUESS" && room.pendingWhiteId === room.aiId) {
+    scheduleAI(room, async () => {
+      const guess = await guessWord(room);
+      applyResult(room, room.whiteGuess(room.aiId, guess));
+    });
+    return;
+  }
+
+  if (!ai.alive) return;
+
+  // Indice : c'est au tour de l'IA de parler.
+  if (room.phase === "INDICES" && room.currentClueOrder[room.cluePointer] === room.aiId) {
+    scheduleAI(room, async () => {
+      const text = await generateClue(room);
+      const res = room.submitClue(room.aiId, text);
+      if (res.ok) broadcast(room);
+    });
+    return;
+  }
+
+  // Vote : l'IA n'a pas encore vote.
+  if (room.phase === "VOTE" && !room.votes.has(room.aiId)) {
+    scheduleAI(room, async () => {
+      const targetId = await chooseVote(room);
+      applyResult(room, room.castVote(room.aiId, targetId));
+    });
+    return;
+  }
 }
 
 // --- Socket.IO -----------------------------------------------------------
@@ -146,6 +208,7 @@ io.on("connection", (socket) => {
     if (room.phase !== "REVEAL") return cb?.({ ok: false, error: "Impossible maintenant." });
     room.beginClueRound();
     broadcast(room);
+    driveAI(room);
     cb?.({ ok: true });
   });
 
@@ -155,6 +218,7 @@ io.on("connection", (socket) => {
     const res = room.submitClue(socket.id, text);
     if (!res.ok) return cb?.({ ok: false, error: res.error });
     broadcast(room);
+    driveAI(room);
     cb?.({ ok: true });
   });
 
@@ -204,21 +268,28 @@ io.on("connection", (socket) => {
     const room = getRoom();
     if (!room) return;
 
+    // Ne jamais confier l'hote au joueur IA (il n'a pas de socket).
+    const nextHumanHost = () =>
+      [...room.players.keys()].find((id) => !room.players.get(id).isAI && room.players.get(id).connected) ??
+      [...room.players.keys()].find((id) => !room.players.get(id).isAI) ??
+      null;
+
     if (room.phase === "LOBBY" || room.phase === "ENDED") {
       room.removePlayer(socket.id);
-      if (room.players.size === 0) {
+      if (room.humanCount() === 0) {
+        clearTimeout(room.aiTimer);
         rooms.delete(room.code);
         return;
       }
-      if (room.hostId === socket.id) room.hostId = [...room.players.keys()][0];
+      if (room.hostId === socket.id) room.hostId = nextHumanHost();
       broadcast(room);
       return;
     }
 
     // En pleine partie : reconciliation (peut declencher vote/elimination/fin).
     const res = room.handleLeaveDuringGame(socket.id);
-    if (room.hostId === socket.id && room.players.size > 0) {
-      room.hostId = [...room.players.keys()].find((id) => room.players.get(id).connected) ?? [...room.players.keys()][0];
+    if (room.hostId === socket.id) {
+      room.hostId = nextHumanHost() ?? room.hostId;
     }
     applyResult(room, res);
   });
@@ -226,4 +297,9 @@ io.on("connection", (socket) => {
 
 httpServer.listen(PORT, () => {
   console.log(`Devine tête — serveur sur http://localhost:${PORT}`);
+  console.log(
+    aiConfigured()
+      ? "[AI] Joueur IA actif (Gemini configuré)."
+      : "[AI] GEMINI_API_KEY absente — le joueur IA jouera en mode secours (indices/votes basiques)."
+  );
 });

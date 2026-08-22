@@ -22,6 +22,28 @@ utilisent l'adresse IP locale de la machine, ex. `http://192.168.1.20:3000`).
 - **Client** : HTML/CSS/JS vanilla, mobile-first, animations 3D en CSS pur.
 - Un seul service Node sert le front **et** les WebSockets. Écoute `process.env.PORT`.
 
+## Joueur IA (variante « imposteur IA »)
+
+L'hôte peut activer un **🤖 Joueur IA** dans les réglages du lobby. Un joueur
+supplémentaire, secrètement piloté par une IA, rejoint alors la partie avec un
+prénom d'apparence humaine. Il reçoit un rôle **comme n'importe quel joueur**,
+donne ses indices et vote tout seul (côté serveur, avec un délai « de frappe »).
+Son statut d'IA reste **secret** jusqu'à la fin : l'écran de révélation annonce
+« 🤖 Il y avait une IA parmi vous ». À vous de la démasquer pendant la partie.
+
+- **Cerveau** : Google **Gemini** (`gemini-2.5-flash`), appelé **côté serveur**
+  uniquement — la clé n'est jamais exposée au navigateur (`server/ai.js`).
+- **Gratuit** : clé Gemini gratuite sur https://aistudio.google.com (« Get API key »).
+- **Config** : variable d'environnement `GEMINI_API_KEY` (et `GEMINI_MODEL`
+  optionnelle). Voir `.env.example`.
+- **Sans clé** : le jeu tourne quand même — l'IA joue en **mode secours**
+  (indices/votes basiques) au lieu de répliques crédibles.
+
+> Note de conception : entre amis qui se connaissent, un prénom « que personne
+> ne revendique » peut trahir l'IA. Le vrai jeu se joue sur la **qualité des
+> indices et des votes** du bot. Une variante plus difficile à démasquer
+> (l'IA remplace un siège sans l'annoncer) est possible plus tard.
+
 ## Déployer en ligne (Render, gratuit)
 
 1. Pousser ce dossier sur un dépôt GitHub.
@@ -36,6 +58,6 @@ utilisent l'adresse IP locale de la machine, ex. `http://192.168.1.20:3000`).
 ## Structure
 
 ```
-server/    index.js · Room.js · gameLogic.js · validation.js · words.js
+server/    index.js · Room.js · gameLogic.js · validation.js · words.js · ai.js
 public/    index.html · style.css · client.js
 ```

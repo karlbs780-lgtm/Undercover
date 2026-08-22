@@ -17,6 +17,9 @@ const BAD_ROLES = ["imposteur", "mister_white"];
 const GOOD_ROLES = ["civil", "gardien", "devin"];
 const CIVIL_LIKE = ["civil", "gardien", "devin", "fou"];
 
+// Prenoms d'apparence humaine pour le joueur IA (il doit se fondre dans la liste).
+const AI_NAMES = ["Léa", "Hugo", "Manon", "Nathan", "Chloé", "Lucas", "Jade", "Enzo", "Camille", "Sacha", "Inès", "Noah", "Zoé", "Tom", "Anaïs", "Ryan", "Maël", "Lina"];
+
 function normalizeWord(s) {
   return (s ?? "")
     .toString()
@@ -33,7 +36,8 @@ export class Room {
     this.players = new Map(); // id -> { id, name, connected, alive }
     this.phase = "LOBBY";
     this.customized = false;
-    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0 };
+    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0, ai: 0 };
+    this.aiId = null; // id du joueur IA (virtuel), s'il est active
 
     this.playedPairs = new Set();
     this.resetRound();
@@ -82,7 +86,7 @@ export class Room {
     this.settings.misterWhite = d.misterWhite;
   }
 
-  updateSettings({ imposteurs, misterWhite, difficulte, themes, fou, gardien, devin }) {
+  updateSettings({ imposteurs, misterWhite, difficulte, themes, fou, gardien, devin, ai }) {
     if (typeof imposteurs === "number") this.settings.imposteurs = Math.max(0, Math.floor(imposteurs));
     if (typeof misterWhite === "number") this.settings.misterWhite = Math.max(0, Math.floor(misterWhite));
     if (typeof fou === "number") this.settings.fou = Math.min(1, Math.max(0, Math.floor(fou)));
@@ -90,7 +94,41 @@ export class Room {
     if (typeof devin === "number") this.settings.devin = Math.min(1, Math.max(0, Math.floor(devin)));
     if (difficulte !== undefined) this.settings.difficulte = difficulte || null;
     if (Array.isArray(themes)) this.settings.themes = themes.filter((t) => THEMES.includes(t));
+    if (typeof ai === "number") {
+      this.settings.ai = Math.min(1, Math.max(0, Math.floor(ai)));
+      this.syncAIPlayer();
+    }
     this.customized = true;
+  }
+
+  // --- Joueur IA (virtuel) ----------------------------------------------
+
+  humanCount() {
+    return [...this.players.values()].filter((p) => !p.isAI).length;
+  }
+
+  pickAIName() {
+    const used = new Set([...this.players.values()].map((p) => p.name.toLowerCase()));
+    const pool = AI_NAMES.filter((n) => !used.has(n.toLowerCase()));
+    const from = pool.length ? pool : AI_NAMES;
+    return from[Math.floor(Math.random() * from.length)];
+  }
+
+  // Ajoute/retire le joueur IA selon le reglage (uniquement dans le lobby).
+  // L'IA est un joueur comme les autres ; son statut d'IA reste SECRET (jamais
+  // dans publicState) et n'est revele qu'a la fin (revealPayload).
+  syncAIPlayer() {
+    if (this.phase !== "LOBBY") return;
+    if (this.settings.ai && !this.aiId) {
+      const id = "ai:" + this.code;
+      this.players.set(id, { id, name: this.pickAIName(), connected: true, alive: true, isAI: true });
+      this.aiId = id;
+      this.applyDefaultsIfNeeded();
+    } else if (!this.settings.ai && this.aiId) {
+      this.players.delete(this.aiId);
+      this.aiId = null;
+      this.applyDefaultsIfNeeded();
+    }
   }
 
   // --- Lancement d'une manche -------------------------------------------
@@ -459,11 +497,13 @@ export class Room {
       winner: this.winner,
       reason: this.endReason,
       pair: this.currentPair,
+      aiName: this.aiId ? this.players.get(this.aiId)?.name ?? null : null,
       roles: [...this.players.entries()].map(([id, p]) => ({
         id,
         name: p.name,
         role: this.roles[id]?.role ?? null,
         word: this.roles[id]?.word ?? null,
+        isAI: !!p.isAI,
       })),
     };
   }

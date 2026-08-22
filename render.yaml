@@ -10,3 +10,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      # Cle Gemini du joueur IA — a definir dans Render (Settings > Environment).
+      # sync:false = Render la demande dans le dashboard, jamais dans le repo.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
