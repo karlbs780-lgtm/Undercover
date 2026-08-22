@@ -15,20 +15,28 @@ export function aiConfigured() {
   return !!genai;
 }
 
-// Diagnostic : fait UN vrai appel Gemini minimal et renvoie le resultat ou
-// l'erreur (jamais la cle). Sert a comprendre pourquoi le bot retombe en secours.
+// Diagnostic : essaie plusieurs formes de requete pour identifier le champ qui
+// fait echouer l'appel (jamais la cle exposee).
 export async function selfTest() {
-  if (!genai) return { ok: false, reason: "GEMINI_API_KEY absente" };
-  try {
-    const res = await genai.models.generateContent({
-      model: MODEL,
-      contents: [{ role: "user", parts: [{ text: "Dis juste : OK" }] }],
-      config: { systemInstruction: "Réponds en un seul mot.", maxOutputTokens: 16, temperature: 1.0, thinkingConfig: { thinkingBudget: 0 } },
-    });
-    return { ok: true, model: MODEL, text: (res.text || "").trim(), finishReason: res?.candidates?.[0]?.finishReason ?? null };
-  } catch (e) {
-    return { ok: false, model: MODEL, error: String(e?.message || e).slice(0, 400) };
+  if (!genai) return { reason: "GEMINI_API_KEY absente" };
+  const base = { model: MODEL, contents: [{ role: "user", parts: [{ text: "Dis juste : OK" }] }] };
+  const variants = [
+    ["minimal", {}],
+    ["+maxTokens", { maxOutputTokens: 30 }],
+    ["+system", { maxOutputTokens: 30, systemInstruction: "Réponds en un seul mot." }],
+    ["+temp", { maxOutputTokens: 30, systemInstruction: "Réponds en un seul mot.", temperature: 1.0 }],
+    ["+thinkBudget0", { maxOutputTokens: 30, systemInstruction: "Réponds en un seul mot.", temperature: 1.0, thinkingConfig: { thinkingBudget: 0 } }],
+  ];
+  const results = [];
+  for (const [name, config] of variants) {
+    try {
+      const res = await genai.models.generateContent({ ...base, config });
+      results.push({ name, ok: true, text: (res.text || "").trim().slice(0, 40) });
+    } catch (e) {
+      results.push({ name, ok: false, error: String(e?.message || e).replace(/\s+/g, " ").slice(0, 140) });
+    }
   }
+  return { model: MODEL, results };
 }
 
 // Un appel Gemini court, sans « thinking » (reponses rapides). Renvoie une
