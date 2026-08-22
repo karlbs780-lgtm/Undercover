@@ -44,7 +44,7 @@ export class Room {
     this.players = new Map(); // id -> { id, name, connected, alive }
     this.phase = "LOBBY";
     this.customized = false;
-    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0, ai: 0 };
+    this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0, ai: 0, camouflage: "facile" };
     this.aiId = null; // id du joueur IA (virtuel), s'il est active
 
     this.playedPairs = new Set();
@@ -95,7 +95,7 @@ export class Room {
     this.settings.misterWhite = d.misterWhite;
   }
 
-  updateSettings({ imposteurs, misterWhite, difficulte, themes, fou, gardien, devin, ai }) {
+  updateSettings({ imposteurs, misterWhite, difficulte, themes, fou, gardien, devin, ai, camouflage }) {
     if (typeof imposteurs === "number") this.settings.imposteurs = Math.max(0, Math.floor(imposteurs));
     if (typeof misterWhite === "number") this.settings.misterWhite = Math.max(0, Math.floor(misterWhite));
     if (typeof fou === "number") this.settings.fou = Math.min(1, Math.max(0, Math.floor(fou)));
@@ -107,6 +107,7 @@ export class Room {
       this.settings.ai = Math.min(1, Math.max(0, Math.floor(ai)));
       this.syncAIPlayer();
     }
+    if (camouflage === "facile" || camouflage === "difficile") this.settings.camouflage = camouflage;
     this.customized = true;
   }
 

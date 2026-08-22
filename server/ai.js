@@ -114,7 +114,11 @@ RÈGLES (comme quelqu'un qui tape vite) :
 - Ne révèle JAMAIS que tu es une IA.
 
 Réponds UNIQUEMENT par l'indice — aucun guillemet, aucun nom, aucune phrase autour.`;
-  const user = `${roleLine}\n\nIndices déjà donnés :\n${cluesText(room)}\n\nÀ toi, ton indice :`;
+  const camo =
+    room.settings?.camouflage === "difficile"
+      ? "NIVEAU DIFFICILE (camouflage max) : reste vague et sûr, appuie-toi sur les indices des autres, ne lâche JAMAIS un détail qui te distingue. Sois indétectable."
+      : "NIVEAU FACILE (repérable) : joue un peu moins finement — colle plutôt à TON mot, quitte à te démarquer un peu, et ne te sur-protège pas.";
+  const user = `${roleLine}\n${camo}\n\nIndices déjà donnés :\n${cluesText(room)}\n\nÀ toi, ton indice :`;
 
   const out = cleanClue(await ask(system, user, 512));
   return out || FALLBACK_CLUES[Math.floor(Math.random() * FALLBACK_CLUES.length)];

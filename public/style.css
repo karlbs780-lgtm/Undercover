@@ -408,3 +408,7 @@ h3 { font-size: 1.05rem; margin-bottom: 14px; }
 .er-alias {
   display: inline-block; margin-right: 8px; font-weight: 700; color: var(--devin);
 }
+
+/* --- Curseur de camouflage de l'IA --- */
+.camouflage-row { margin-top: 10px; }
+.cam-label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }

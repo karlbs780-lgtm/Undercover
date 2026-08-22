@@ -115,6 +115,8 @@ function syncSettingsInputs() {
   renderThemeChips();
 
   renderSpecialChips();
+  document.querySelectorAll("#cam-chips .chip").forEach((c) => c.classList.toggle("active", state.settings.camouflage === c.dataset.cam));
+  $("camouflage-row").classList.toggle("hidden", !state.settings.ai);
 
   const avail = state.counts.availablePairs;
   $("avail-pairs").textContent = `${avail} paire${avail > 1 ? "s" : ""}`;
@@ -155,6 +157,11 @@ document.querySelectorAll("#special-chips .chip").forEach((chip) => {
     const role = chip.dataset.role;
     patchSettings({ [role]: state.settings[role] ? 0 : 1 });
   });
+});
+
+// Curseur de camouflage de l'IA (facile / difficile)
+document.querySelectorAll("#cam-chips .chip").forEach((chip) => {
+  chip.addEventListener("click", () => patchSettings({ camouflage: chip.dataset.cam }));
 });
 
 // Compteurs +/-
