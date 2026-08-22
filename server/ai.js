@@ -19,22 +19,32 @@ export function aiConfigured() {
 // fait echouer l'appel (jamais la cle exposee).
 export async function selfTest() {
   if (!genai) return { reason: "GEMINI_API_KEY absente" };
-  try {
-    const clue = await generateClueRaw();
-    return { ok: true, model: MODEL, sample: clue };
-  } catch (e) {
-    return { ok: false, model: MODEL, error: String(e?.message || e).replace(/\s+/g, " ").slice(0, 200) };
+  // Sonde plusieurs modeles pour trouver lequel est disponible ET a du quota gratuit.
+  const models = [
+    "gemini-3.6-flash",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+  ];
+  const probe = [];
+  for (const m of models) {
+    try {
+      const res = await genai.models.generateContent({
+        model: m,
+        contents: [{ role: "user", parts: [{ text: "Dis juste : OK" }] }],
+        config: { maxOutputTokens: 256, temperature: 1.0 },
+      });
+      probe.push({ model: m, ok: true, text: (res.text || "").trim().slice(0, 30) });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      const code = (msg.match(/"code":\s*(\d+)/) || msg.match(/\b(4\d\d|5\d\d)\b/) || [])[1] || "?";
+      probe.push({ model: m, ok: false, code });
+    }
+    await new Promise((r) => setTimeout(r, 1300));
   }
-}
-
-// Un vrai appel via ask() (meme forme que le jeu) pour verifier de bout en bout.
-async function generateClueRaw() {
-  const res = await genai.models.generateContent({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: "Donne un indice d'un mot sur le mot « chat », sans le dire." }] }],
-    config: { systemInstruction: "Tu joues au jeu de l'imposteur. Réponds par un seul mot.", maxOutputTokens: 512, temperature: 1.0 },
-  });
-  return (res.text || "").trim().slice(0, 60);
+  return { current: MODEL, probe };
 }
 
 // Un appel Gemini court, sans « thinking » (reponses rapides). Renvoie une
