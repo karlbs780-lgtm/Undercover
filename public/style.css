@@ -412,3 +412,12 @@ h3 { font-size: 1.05rem; margin-bottom: 14px; }
 /* --- Curseur de camouflage de l'IA --- */
 .camouflage-row { margin-top: 10px; }
 .cam-label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+
+/* --- Chasse à l'IA : verdict + score de fin --- */
+.end-hunt {
+  text-align: center; font-weight: 800; font-size: 1.15rem; margin: 6px 0 4px;
+  padding: 10px 12px; border-radius: var(--radius);
+}
+.end-hunt.caught { color: var(--civil); background: rgba(76, 215, 160, 0.12); border: 1px solid rgba(76, 215, 160, 0.4); }
+.end-hunt.escaped { color: var(--imposteur); background: rgba(224, 108, 108, 0.12); border: 1px solid rgba(224, 108, 108, 0.4); }
+.end-score { text-align: center; color: var(--muted); font-weight: 700; margin: 4px 0 10px; font-variant-numeric: tabular-nums; }

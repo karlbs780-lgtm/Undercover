@@ -7,6 +7,7 @@ let myId = null;
 let state = null;
 let myRole = null; // { role, word } recu en prive
 let myVote = null; // id vote localement (surbrillance)
+let myHuntVote = null; // id vote lors de la chasse a l'IA
 let myProtection = null; // cible protegee (Gardien, ce tour)
 let devinUsed = false; // le Devin a-t-il utilise son pouvoir
 let devinResult = null; // { targetName, isTraitor }
@@ -256,10 +257,12 @@ function renderGame() {
   hide("phase-indices");
   hide("phase-vote");
   hide("phase-white");
+  hide("phase-hunt");
 
   if (state.phase === "INDICES") renderIndices();
   else if (state.phase === "VOTE") renderVote();
   else if (state.phase === "WHITE_GUESS") renderWhite();
+  else if (state.phase === "AI_HUNT") renderHunt();
 
   renderGardienPanel();
   renderDevinPanel();
@@ -436,6 +439,34 @@ $("white-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendWhiteGuess();
 });
 
+// --- Phase CHASSE À L'IA -------------------------------------------------
+
+function renderHunt() {
+  show("phase-hunt");
+  const list = $("hunt-list");
+  list.innerHTML = "";
+  for (const p of state.players) {
+    if (p.id === myId) continue; // tu sais que ce n'est pas toi
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.className = "btn vote-btn" + (myHuntVote === p.id ? " voted" : "");
+    btn.textContent = p.name ?? "Joueur";
+    btn.addEventListener("click", () => castHuntVote(p.id));
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+  const n = state.huntVoters ? state.huntVoters.length : 0;
+  $("hunt-progress").textContent = myHuntVote ? `Ton vote est pris en compte (${n}).` : `${n} joueur${n > 1 ? "s ont" : " a"} voté.`;
+}
+
+function castHuntVote(targetId) {
+  myHuntVote = targetId;
+  renderHunt();
+  socket.emit("hunt_vote", { targetId }, (res) => {
+    if (!res?.ok) $("game-error").textContent = res?.error || "Erreur.";
+  });
+}
+
 // --- Fin de partie -------------------------------------------------------
 
 function renderEnd(reveal) {
@@ -466,6 +497,22 @@ function renderEnd(reveal) {
     aiEl.classList.remove("hidden");
   } else {
     aiEl.classList.add("hidden");
+  }
+
+  // Chasse à l'IA : verdict + score
+  const huntEl = $("end-hunt");
+  if (aiRow && (reveal.aiCaught === true || reveal.aiCaught === false)) {
+    huntEl.textContent = reveal.aiCaught ? "🎯 Vous avez démasqué l'IA !" : "🤖 L'IA vous a échappé…";
+    huntEl.className = "end-hunt " + (reveal.aiCaught ? "caught" : "escaped");
+  } else {
+    huntEl.classList.add("hidden");
+  }
+  const scoreEl = $("end-score");
+  if (aiRow && reveal.score) {
+    scoreEl.textContent = `Chasse à l'IA — 🧑 Humains ${reveal.score.humans} · ${reveal.score.ai} IA 🤖`;
+    scoreEl.classList.remove("hidden");
+  } else {
+    scoreEl.classList.add("hidden");
   }
 
   const list = $("end-roles");
@@ -503,6 +550,7 @@ socket.on("state", (s) => {
     case "LOBBY":
       myRole = null;
       myVote = null;
+      myHuntVote = null;
       myProtection = null;
       devinUsed = false;
       devinResult = null;
@@ -518,6 +566,7 @@ socket.on("state", (s) => {
     case "INDICES":
     case "VOTE":
     case "WHITE_GUESS":
+    case "AI_HUNT":
       if (state.phase !== "VOTE") myVote = null; // reset entre les tours
       if (state.phase === "INDICES") myProtection = null; // protection par tour de vote
       renderGame();
@@ -531,6 +580,7 @@ socket.on("state", (s) => {
 socket.on("your_role", (info) => {
   myRole = info;
   // remise à zéro des pouvoirs pour la nouvelle manche
+  myHuntVote = null;
   myProtection = null;
   devinUsed = false;
   devinResult = null;

@@ -241,6 +241,16 @@ io.on("connection", (socket) => {
     cb?.({ ok: true });
   });
 
+  // Chasse a l'IA : chaque humain vote pour designer l'IA.
+  socket.on("hunt_vote", ({ targetId } = {}, cb) => {
+    const room = getRoom();
+    if (!room) return cb?.({ ok: false, error: "Salle introuvable." });
+    const res = room.castHuntVote(socket.id, targetId);
+    if (!res.ok) return cb?.({ ok: false, error: res.error });
+    applyResult(room, res); // broadcast (progression) ou game_over (resolu)
+    cb?.({ ok: true });
+  });
+
   socket.on("white_guess", ({ guess } = {}, cb) => {
     const room = getRoom();
     if (!room) return cb?.({ ok: false, error: "Salle introuvable." });

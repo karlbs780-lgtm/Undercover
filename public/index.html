@@ -167,6 +167,14 @@
         <p id="white-guess-wait" class="turn-info hidden">Mister White a été démasqué et tente de deviner le mot…</p>
       </div>
 
+      <!-- Phase CHASSE À L'IA : les humains désignent le bot -->
+      <div id="phase-hunt" class="phase-box hidden">
+        <h3>🤖 Qui était l'IA&nbsp;?</h3>
+        <p class="turn-info">La manche est finie. Ensemble, démasquez l'imposteur artificiel.</p>
+        <p id="hunt-progress" class="turn-info"></p>
+        <ul id="hunt-list" class="vote-list"></ul>
+      </div>
+
       <!-- Pouvoir du Gardien : protection (pendant le vote) -->
       <div id="gardien-panel" class="power-panel gardien hidden">
         <h3>🛡️ Protège un joueur</h3>
@@ -190,7 +198,9 @@
       <div id="end-trophy" class="end-trophy">🏆</div>
       <div id="end-banner" class="end-banner">—</div>
       <p id="end-reason" class="end-reason"></p>
+      <p id="end-hunt" class="end-hunt hidden"></p>
       <p id="end-ai" class="end-ai hidden"></p>
+      <p id="end-score" class="end-score hidden"></p>
       <h3>Le mot était</h3>
       <p id="end-word" class="end-word">—</p>
       <ul id="end-roles" class="end-roles"></ul>

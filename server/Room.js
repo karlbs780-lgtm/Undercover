@@ -46,6 +46,8 @@ export class Room {
     this.customized = false;
     this.settings = { imposteurs: 1, misterWhite: 0, difficulte: null, themes: [], fou: 0, gardien: 0, devin: 0, ai: 0, camouflage: "facile" };
     this.aiId = null; // id du joueur IA (virtuel), s'il est active
+    this.scoreHumans = 0; // chasse a l'IA : manches ou l'IA a ete demasquee
+    this.scoreAI = 0; // manches ou l'IA s'est echappee
 
     this.playedPairs = new Set();
     this.resetRound();
@@ -70,6 +72,11 @@ export class Room {
     this.devinUsedBy = new Set(); // devins ayant deja enquete
     this.winner = null;
     this.endReason = null;
+    // Chasse a l'IA (phase AI_HUNT en fin de partie)
+    this.huntVotes = new Map(); // voterId -> accusedId
+    this.pendingRoleWin = null; // { winner, reason } gele pendant la chasse
+    this.aiCaught = null; // true si l'IA a ete demasquee au vote de chasse
+    this.huntAccused = null; // joueur le plus accuse d'etre l'IA
   }
 
   // --- Lobby -------------------------------------------------------------
@@ -364,8 +371,8 @@ export class Room {
 
     // Le Fou gagne s'il se fait eliminer au vote.
     if (role === "fou") {
-      this.endGame("fou", `${p.name}, le Fou, s'est fait éliminer : il gagne !`);
-      return { ...result, ended: true, winner: this.winner, reason: this.endReason };
+      const c = this.concludeGame("fou", `${p.name}, le Fou, s'est fait éliminer : il gagne !`);
+      return { ...result, ...c };
     }
 
     // Mister White demasque : il tente de deviner le mot.
@@ -388,8 +395,8 @@ export class Room {
     const correct = normalizeWord(guess) === normalizeWord(this.currentPair.civil);
 
     if (correct) {
-      this.endGame("traitres", `Mister White a deviné le mot : « ${this.currentPair.civil} » !`);
-      return { ok: true, type: "white_result", correct: true, guess, ended: true, winner: this.winner, reason: this.endReason };
+      const c = this.concludeGame("traitres", `Mister White a deviné le mot : « ${this.currentPair.civil} » !`);
+      return { ok: true, type: "white_result", correct: true, guess, ...c };
     }
     const after = this.advanceAfterElimination();
     return { ok: true, type: "white_result", correct: false, guess, ...after };
@@ -414,11 +421,63 @@ export class Room {
   advanceAfterElimination() {
     const w = this.checkWin();
     if (w.ended) {
-      this.endGame(w.winner, w.reason);
-      return { ended: true, winner: w.winner, reason: w.reason };
+      const c = this.concludeGame(w.winner, w.reason);
+      return c.hunt ? { hunt: true } : { ended: true, winner: w.winner, reason: w.reason };
     }
     this.beginClueRound();
     return { ended: false, nextPhase: "INDICES" };
+  }
+
+  // --- Chasse a l'IA -----------------------------------------------------
+
+  shouldHunt() {
+    return !!this.settings.ai && !!this.aiId && this.players.has(this.aiId);
+  }
+
+  // Appelee a la place de endGame quand le camp gagnant est decide : bascule en
+  // AI_HUNT si une IA est presente, sinon termine normalement.
+  concludeGame(winner, reason) {
+    if (this.shouldHunt()) {
+      this.pendingRoleWin = { winner, reason };
+      this.huntVotes = new Map();
+      this.phase = "AI_HUNT";
+      return { hunt: true };
+    }
+    this.endGame(winner, reason);
+    return { ended: true };
+  }
+
+  huntVotersNeeded() {
+    return [...this.players.values()].filter((p) => !p.isAI && p.connected).length;
+  }
+
+  castHuntVote(voterId, targetId) {
+    if (this.phase !== "AI_HUNT") return { ok: false, error: "Ce n'est pas la phase de chasse." };
+    const voter = this.players.get(voterId);
+    if (!voter || voter.isAI) return { ok: false, error: "Vote invalide." };
+    if (!this.players.has(targetId)) return { ok: false, error: "Cible invalide." };
+    this.huntVotes.set(voterId, targetId);
+    if (this.huntVotes.size >= this.huntVotersNeeded()) return this.resolveHunt();
+    return { ok: true, progress: true };
+  }
+
+  resolveHunt() {
+    const tally = {};
+    for (const t of this.huntVotes.values()) tally[t] = (tally[t] || 0) + 1;
+    let max = 0;
+    let leaders = [];
+    for (const [id, c] of Object.entries(tally)) {
+      if (c > max) { max = c; leaders = [id]; }
+      else if (c === max) leaders.push(id);
+    }
+    this.huntAccused = leaders.length ? leaders[Math.floor(Math.random() * leaders.length)] : null;
+    this.aiCaught = this.huntAccused === this.aiId;
+    if (this.aiCaught) this.scoreHumans++;
+    else this.scoreAI++;
+
+    const rw = this.pendingRoleWin || { winner: null, reason: "" };
+    this.endGame(rw.winner, rw.reason);
+    return { ok: true, ended: true };
   }
 
   endGame(winner, reason) {
@@ -442,6 +501,14 @@ export class Room {
     p.connected = false;
     p.alive = false;
     if (this.protectedId === id) this.protectedId = null;
+
+    // Deconnexion pendant la chasse a l'IA : on retire son vote et on reevalue.
+    if (this.phase === "AI_HUNT") {
+      this.huntVotes.delete(id);
+      const need = this.huntVotersNeeded();
+      if (need > 0 && this.huntVotes.size >= need) return this.resolveHunt();
+      return {};
+    }
 
     const idx = this.currentClueOrder.indexOf(id);
     if (idx !== -1) {
@@ -517,6 +584,7 @@ export class Room {
       turnName: turnId ? this.displayName(turnId) : null,
       clues: anon ? this.clues.map((c) => ({ ...c, name: this.aliases[c.playerId] ?? c.name })) : this.clues,
       voters: [...this.votes.keys()],
+      huntVoters: [...this.huntVotes.keys()],
       aliveCount: this.aliveIds().length,
       pendingWhiteId: this.pendingWhiteId,
       winner: this.winner,
@@ -530,6 +598,11 @@ export class Room {
       reason: this.endReason,
       pair: this.currentPair,
       aiName: this.aiId ? this.players.get(this.aiId)?.name ?? null : null,
+      aiCaught: this.aiCaught,
+      accused: this.huntAccused
+        ? { name: this.players.get(this.huntAccused)?.name ?? null, alias: this.aliases[this.huntAccused] ?? null }
+        : null,
+      score: { humans: this.scoreHumans, ai: this.scoreAI },
       roles: [...this.players.entries()].map(([id, p]) => ({
         id,
         name: p.name,
