@@ -20,6 +20,11 @@ const io = new Server(httpServer);
 
 app.use(express.static(join(__dirname, "..", "public")));
 
+// Diagnostic (aucun secret) : indique si le joueur IA est bien configure.
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, aiConfigured: aiConfigured(), model: process.env.GEMINI_MODEL || "gemini-2.5-flash" });
+});
+
 /** @type {Map<string, Room>} */
 const rooms = new Map();
 
