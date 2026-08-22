@@ -61,6 +61,24 @@ function cluesText(room) {
   return list.length ? list.join("\n") : "(aucun indice pour l'instant)";
 }
 
+// Voix du joueur : une personnalite STABLE par partie (derivee du code de salle),
+// pour que le bot ait un style coherent et humain au fil de ses indices.
+const PERSONAS = [
+  "tu écris très court et sec, souvent un seul mot, tout en minuscules",
+  "tu fonctionnes par associations d'idées un peu perso",
+  "tu glisses parfois une petite vanne ou un jeu de mots léger",
+  "tu restes prudent·e, tes indices sont plutôt vagues",
+  "tu balances 2-3 mots sur un ton oral et relâché",
+  "tu es direct·e, un peu je-m'en-foutiste",
+];
+
+function personaFor(room) {
+  const s = room.code || "x";
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return PERSONAS[h % PERSONAS.length];
+}
+
 function cleanClue(s) {
   if (!s) return "";
   return s
@@ -74,20 +92,29 @@ function cleanClue(s) {
 // --- Indice ---------------------------------------------------------------
 
 export async function generateClue(room) {
-  const me = room.players.get(room.aiId);
   const info = room.roles[room.aiId] || {};
   let roleLine;
   if (info.role === "mister_white") {
     roleLine =
-      "Tu n'as AUCUN mot secret (mais ne le dis jamais). Déduis un indice crédible à partir des indices déjà donnés, et reste assez vague pour ne pas te faire démasquer.";
+      "Tu n'as AUCUN mot secret (ne le dis jamais). Devine l'ambiance à partir des indices déjà donnés et lâche un indice plausible et assez vague, qui te fait passer pour quelqu'un qui connaît le mot.";
   } else if (info.role === "imposteur") {
-    roleLine = `Ton mot secret est « ${info.word} ». Tu es peut-être l'imposteur (ton mot diffère peut-être de celui des autres) : donne un indice lié à TON mot, mais reste prudent et pas trop précis.`;
+    roleLine = `Ton mot est « ${info.word} », mais tu es sans doute l'imposteur (ton mot diffère peut-être de celui des autres). Donne un indice qui colle à TON mot ET qui pourrait aussi coller au leur — reste sûr, appuie-toi sur ce que les autres ont dit pour te fondre. Ne te trahis pas par un détail trop précis.`;
   } else {
-    roleLine = `Ton mot secret est « ${info.word} ». Donne un indice lié à ce mot, sans jamais écrire le mot lui-même, ni trop évident ni trop vague.`;
+    roleLine = `Ton mot est « ${info.word} ». Prouve subtilement que tu le connais, sans le rendre trop facile pour l'imposteur : ni trop évident, ni trop vague.`;
   }
 
-  const system = `Tu joues au jeu de l'imposteur (type Undercover) en français, avec des amis. Tu es « ${me?.name} ». À ton tour, tu donnes UN SEUL indice très court (1 à 4 mots) sur ton mot, exactement comme un vrai joueur humain : naturel, relâché, parfois une petite faute de frappe. Ne révèle JAMAIS que tu es une IA. Réponds UNIQUEMENT par l'indice, sans guillemets, sans ton nom, sans phrase autour.`;
-  const user = `${roleLine}\n\nIndices déjà donnés :\n${cluesText(room)}\n\nTon indice (max 4 mots) :`;
+  const persona = personaFor(room);
+  const system = `Tu joues au jeu de l'imposteur (type Undercover) en français, entre potes, sur ton téléphone. Tu es un vrai joueur humain — ${persona}.
+
+RÈGLES (comme quelqu'un qui tape vite) :
+- UN SEUL indice, très court : 1 à 3 mots. Jamais de phrase, jamais d'explication.
+- Ton oral et familier, minuscules ok, pas de ponctuation finale.
+- Ne sois pas trop parfait·e : un humain balance ce qui lui vient, il n'optimise pas.
+- N'écris jamais le mot secret. Ne répète pas un indice déjà donné, ni le mot exact d'un autre joueur.
+- Ne révèle JAMAIS que tu es une IA.
+
+Réponds UNIQUEMENT par l'indice — aucun guillemet, aucun nom, aucune phrase autour.`;
+  const user = `${roleLine}\n\nIndices déjà donnés :\n${cluesText(room)}\n\nÀ toi, ton indice :`;
 
   const out = cleanClue(await ask(system, user, 512));
   return out || FALLBACK_CLUES[Math.floor(Math.random() * FALLBACK_CLUES.length)];
