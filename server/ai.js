@@ -15,6 +15,22 @@ export function aiConfigured() {
   return !!genai;
 }
 
+// Diagnostic : fait UN vrai appel Gemini minimal et renvoie le resultat ou
+// l'erreur (jamais la cle). Sert a comprendre pourquoi le bot retombe en secours.
+export async function selfTest() {
+  if (!genai) return { ok: false, reason: "GEMINI_API_KEY absente" };
+  try {
+    const res = await genai.models.generateContent({
+      model: MODEL,
+      contents: [{ role: "user", parts: [{ text: "Dis juste : OK" }] }],
+      config: { systemInstruction: "Réponds en un seul mot.", maxOutputTokens: 16, temperature: 1.0, thinkingConfig: { thinkingBudget: 0 } },
+    });
+    return { ok: true, model: MODEL, text: (res.text || "").trim(), finishReason: res?.candidates?.[0]?.finishReason ?? null };
+  } catch (e) {
+    return { ok: false, model: MODEL, error: String(e?.message || e).slice(0, 400) };
+  }
+}
+
 // Un appel Gemini court, sans « thinking » (reponses rapides). Renvoie une
 // chaine, ou null en cas d'echec (l'appelant gere le repli).
 async function ask(system, user, maxTokens = 48) {
